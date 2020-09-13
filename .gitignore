@@ -1,0 +1,18 @@
+# LaTeX files
+*.aux
+*.bbl
+*.log
+*.out
+*.gz
+
+# R files
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+
+# build output files
+build/output/*
+
+# miscellaneous
+.DS_Store
