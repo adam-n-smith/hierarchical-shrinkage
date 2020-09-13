@@ -11,8 +11,8 @@
 .RData
 .Ruserdata
 
-# build output files
-build/output/*
+# build files
+build/*
 
 # miscellaneous
 .DS_Store
