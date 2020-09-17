@@ -7,7 +7,7 @@ library(forcats)
 library(Rcpp)
 library(RcppArmadillo)
 
-sourceCpp("code/horse_mcmc.cpp")
+sourceCpp(here("functions","horse_mcmc.cpp"))
 
 createindex = function(tree){
   

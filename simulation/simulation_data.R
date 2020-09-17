@@ -6,8 +6,9 @@ library(reshape2)
 library(forcats)
 library(Rcpp)
 library(RcppArmadillo)
+library(here)
 
-sourceCpp("code/horse_mcmc.cpp")
+sourceCpp(here("functions","horse_mcmc.cpp"))
 
 createindex = function(tree){
   
@@ -188,7 +189,7 @@ nphi = sum(np)
 Cphi = matrix(Cphi,n,p)
 
 # training data
-betaown = -exp(rnorm(p))
+betaown = runif(p,-6,-1)
 B[which(diag(p)==1)] = betaown
 X = matrix(rnorm(n*p),n,p)
 # rho = runif(p)
