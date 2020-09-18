@@ -8,7 +8,7 @@ using namespace Rcpp;
 vec unlist(List const& list, int const& total_length){
   
   int n = list.size();
-
+  
   // loop and fill
   NumericVector output = no_init(total_length);
   int index=0;
@@ -74,16 +74,16 @@ List countchildren_cpp(mat const& tree){
         mat jsubtree = tree(find(tree.col(ell)==j+1),find(colvec>=ell));
         
         // if(i!=j){
-          vec counti = zeros(jsubtree.n_cols);
-          vec countj = zeros(jsubtree.n_cols);
-          for(int k=1;k<jsubtree.n_cols;k++){
-            vec uniqi = unique(isubtree.col(k));
-            vec uniqj = unique(jsubtree.col(k));
-            counti(k) = uniqi.size();
-            countj(k) = uniqj.size();
-          }
-          
-          counts(i,j) = sum(counti % countj);
+        vec counti = zeros(jsubtree.n_cols);
+        vec countj = zeros(jsubtree.n_cols);
+        for(int k=1;k<jsubtree.n_cols;k++){
+          vec uniqi = unique(isubtree.col(k));
+          vec uniqj = unique(jsubtree.col(k));
+          counti(k) = uniqi.size();
+          countj(k) = uniqj.size();
+        }
+        
+        counts(i,j) = sum(counti % countj);
         // }
         
       }
@@ -136,25 +136,9 @@ vec groupsum_cpp(vec const& x, vec const& groups, int const& n){
 //[[Rcpp::export]]
 vec randig(int const& n, vec const& shape, vec const& scale){
   vec output(n);
+  // note that R::rgamma has (shape, scale) parameterization
   for(int i=0;i<n;i++){
     output(i) = 1/R::rgamma(as_scalar(shape(i)),1/as_scalar(scale(i)));
-  }
-  return output;
-}
-// vec randig(int const& n, vec const& shape, vec const& rate){
-//   vec output(n);
-//   for(int i=0;i<n;i++){
-//     output(i) = 1/R::rgamma(as_scalar(shape(i)),1/as_scalar(rate(i)));
-//   }
-//   return output;
-// }
-
-// generate gamma random variables
-//[[Rcpp::export]]
-vec randg(int const& n, vec const& shape, vec const& scale){
-  vec output(n);
-  for(int i=0;i<n;i++){
-    output(i) = R::rgamma(as_scalar(shape(i)),as_scalar(scale(i)));
   }
   return output;
 }
@@ -335,9 +319,9 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string shrinkage, bool
     }
     
     // tau ~ C+(0,1)//
-    levelsums = sum(pow(beta(wchcross),2)/lambda);
-    tau = 1/R::rgamma(0.5*(p*p-p+1), 1/as_scalar(1/xitau+0.5*levelsums));
-    xitau = 1/R::rgamma(1,as_scalar(1/(1+1/tau)));
+    // levelsums = sum(pow(beta(wchcross),2)/lambda);
+    // tau = 1/R::rgamma(0.5*(p*p-p+1), 1/as_scalar(1/xitau+0.5*levelsums));
+    // xitau = 1/R::rgamma(1,as_scalar(1/(1+1/tau)));
     
     // lambda 
     // ridge: keep fixed at one
@@ -656,7 +640,9 @@ List rSURhiershrinkage(List Data, List Prior, List Mcmc, std::string shrinkage, 
     // tau //
     levelsums = sum(pow(betaij - betabar(wchcross),2)/(Psi_Lmone % as<vec>(lambdalist[L-1])));
     // tau(L-1) = 1/R::rgamma(0.5*(npar(L-1)+1), 1/(1/xitau(L-1)+0.5*as_scalar(levelsums)));
-    xitau(L-1) = 1/R::rgamma(1,tau(L-1)/(tau(L-1)+1));
+    // xitau(L-1) = 1/R::rgamma(1,tau(L-1)/(tau(L-1)+1));
+    tau(L-1) = 1/R::rgamma(0.5*(npar(L-1)+1), 1/(1/xitau(L-1)+0.5*as_scalar(levelsums)));
+    xitau(L-1) = 1/R::rgamma(1,1/(1+1/tau(L-1)));
     
     // lambda //
     
@@ -665,14 +651,6 @@ List rSURhiershrinkage(List Data, List Prior, List Mcmc, std::string shrinkage, 
     
     if(shrinkage=="ridge"){
       lambda = ones(npar(L-1));
-    }
-    if(shrinkage=="lasso"){
-      // rate = 0.5 + 0.5*sums;
-      // lambda = randg(npar(L-1),ones(npar(L-1)),1/rate);
-      // vec mutilde = pow(2*tau(L-1)*Psi_Lmone/pow(betaij-beta(wchcross),2),0.5);
-      // lambda = 1/randinvgaussian(npar(L-1),mutilde,2);
-      vec mutilde = pow(2*tau(0)/pow(betaij-beta(wchcross),2),0.5);
-      lambda = 1/randinvgaussian(npar(L-1),mutilde,2);
     }
     if(shrinkage=="horseshoe"){
       scale = 1/as<vec>(xilambdalist[L-1]) + 0.5*sums;
