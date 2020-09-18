@@ -1,6 +1,8 @@
 library(tidyverse)
 library(Rcpp)
 library(RcppArmadillo)
+library(here)
+library(reshape2)
 
 source(here("functions","simulation_functions.R"))
 sourceCpp(here("functions","horse_mcmc.cpp"))
