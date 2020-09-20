@@ -77,7 +77,7 @@ createindex = function(tree){
   return(list(list=out,index=index,npar=npar))
   
 }
-simdata_dense = function(n,p,d,tree,childrencounts,npar,tausq0){
+simdata_dense = function(n,p,d,tree,childrencounts,npar,tau){
   
   L = ncol(tree)
   
@@ -86,13 +86,12 @@ simdata_dense = function(n,p,d,tree,childrencounts,npar,tausq0){
   Sigma = diag(sigmasq)
   
   # global variances and initial mean
-  tau = rep(1,L)
-  tau[L] = tausq0
   mean = 0
   
   # level 1
   lambda = rep(1,npar[1])
   theta = mean + sqrt(tau[1])*rnorm(npar[1])
+  # theta = c(-2,-1,2,1)
   thetalist = list()
   lambdalist = list()
   thetalist[[1]] = theta
@@ -109,16 +108,16 @@ simdata_dense = function(n,p,d,tree,childrencounts,npar,tausq0){
     
     # draw local variances for current level
     # lambda = runif(npar[ell])
-    lambda = 1/rgamma(npar[ell],2,2)
-    # lambda = rep(1,npar[ell])
-    
+    # lambda = 1/rgamma(npar[ell],10,10)
+    lambda = rep(1,npar[ell])
+
     # construct theta for current level
-    thetasd = sqrt(lambda)*sqrt(Psi)*sqrt(tau[ell])
-    if(ell==L){
-      thetasd = rep(sqrt(sigmasq),each=p-1) * thetasd
-    }
+    thetasd = sqrt(lambda*Psi*tau[ell])
     theta = mean + thetasd*rnorm(npar[ell])
-    
+    if(ell==L){
+      theta = mean + rbinom(npar[ell],1,0.05)*thetasd*rnorm(npar[ell])
+    }
+
     # save
     thetalist[[ell]] = theta
     lambdalist[[ell]] = lambda
@@ -152,15 +151,19 @@ simdata_dense = function(n,p,d,tree,childrencounts,npar,tausq0){
   error = matrix(rnorm(n*p),n,p)%*%chol(Sigma)
   Y = X%*%B + Cphi + error
   
-  return(list(Y=Y,X=X,B=B,Clist=Clist,thetalist=thetalist,lambdalist=lambdalist,tau=tau))
+  # errors at product level
+  E = matrix(NA,p,p)
+  E[!(diag(p)==1)] = theta - mean
+  
+  return(list(Y=Y,X=X,B=B,Clist=Clist,thetalist=thetalist,
+              lambdalist=lambdalist,tau=tau,sigmasq=sigmasq,
+              E=E))
   
 }
-simdata_sparse = function(n,p,d){
+simdata_sparse = function(n,p,d,prop_sparse){
   
-  npar = 
-    
-    # observational error
-    sigmasq = runif(p,0,1)
+  # observational error
+  sigmasq = runif(p,0,1)
   Sigma = diag(sigmasq)
   
   # global variances and initial mean
@@ -172,8 +175,7 @@ simdata_sparse = function(n,p,d){
   wchown = which(diag(p)==1)
   betaown = -exp(rnorm(p))
   B[wchown] = betaown
-  theta = rnorm(p^2-p,0,sqrt(tau))*rbinom(p^2-p,1,.05)
-  B[-wchown] = theta
+  B[-wchown] = rnorm(p^2-p,0,sqrt(tau))*rbinom(p^2-p,1,1-prop_sparse)
   
   # intercepts and other controls
   Clist = NULL
@@ -197,6 +199,6 @@ simdata_sparse = function(n,p,d){
   error = matrix(rnorm(n*p),n,p)%*%chol(Sigma)
   Y = X%*%B + Cphi + error
   
-  return(list(Y=Y,X=X,B=B,Clist=Clist,npar=npar))
+  return(list(Y=Y,X=X,B=B,Clist=Clist,tau=tau))
   
 }
