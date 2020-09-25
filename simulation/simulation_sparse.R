@@ -9,7 +9,7 @@ sourceCpp(here("functions","shrinkage_mcmc.cpp"))
 
 # dimensions
 n = 50
-p = 100
+p = 50
 d = 1
 
 # simulate data
@@ -31,6 +31,8 @@ melt(data$B) %>%
         axis.text.x=element_blank(),
         axis.text.y=element_blank())
 
+data = simdata_sparsetree[[2]][[1]]
+p = 100
 # data
 Data = list(
   Y=data$Y, 
@@ -52,12 +54,13 @@ Prior = list(
 
 # mcmc
 Mcmc = list(
-  R = 200,
+  R = 500,
   keep = 1
 )
 
-sourceCpp(here("functions","shrinkage_mcmc.cpp"))
+# sourceCpp(here("functions","shrinkage_mcmc.cpp"))
 out = rSURshrinkage(Data,Prior,Mcmc,shrinkage="ridge",print=TRUE)
+out = rSURshrinkage(Data,Prior,Mcmc,shrinkage="lasso",print=TRUE)
 out = rSURshrinkage(Data,Prior,Mcmc,shrinkage="horseshoe",print=TRUE)
 
 end = Mcmc$R/Mcmc$keep
@@ -77,3 +80,5 @@ lambdahat = apply(out$lambdadraws[burn:end,],2,mean)
 tauhat = mean(out$taudraws[burn:end])
 kappa = 1/(1+tauhat*lambdahat)
 plot(kappa,data$B[diag(p)!=1])
+
+matplot(out$taudraws,type="l")

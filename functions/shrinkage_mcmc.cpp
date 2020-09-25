@@ -1,5 +1,5 @@
 // [[Rcpp::depends(RcppArmadillo)]]
-#define ARMA_DONT_PRINT_ERRORS
+// #define ARMA_DONT_PRINT_ERRORS
 #include <RcppArmadillo.h>
 using namespace arma;
 using namespace Rcpp;
@@ -134,24 +134,24 @@ vec groupmean_cpp(vec const& x, vec const& groups, int const& n){
   return output;
 }
 
-//[[Rcpp::export]]
-vec ell_sum_variance(List const& lambdalist, List const& list, vec const& tau, int const& level){
-  
-  int L = tau.n_elem;
-  vec denom = as<vec>(lambdalist[L-1])*tau[L-1];
-  
-  for(int i=L-2;i>level;i--){
-    vec lambda = lambdalist[i];
-    vec tmp = replace_cpp(list[i+1],lambda);
-    if(i<L-2){
-      tmp = replace_cpp(list[L-1],tmp);
-    }
-    denom += tmp*tau[i];
-  }
-  
-  return denom;
-  
-}
+// //[[Rcpp::export]]
+// vec ell_sum_variance(List const& lambdalist, List const& list, vec const& tau, int const& level){
+//   
+//   int L = tau.n_elem;
+//   vec denom = as<vec>(lambdalist[L-1])*tau[L-1];
+//   
+//   for(int i=L-2;i>level;i--){
+//     vec lambda = lambdalist[i];
+//     vec tmp = replace_cpp(list[i+1],lambda);
+//     if(i<L-2){
+//       tmp = replace_cpp(list[L-1],tmp);
+//     }
+//     denom += tmp*tau[i];
+//   }
+//   
+//   return denom;
+//   
+// }
 
 
 
@@ -431,7 +431,8 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string shrinkage, bool
 }
 
 //[[Rcpp::export]]
-List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, std::string shrinkage, bool print){
+List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, 
+                       std::string product_shrinkage, std::string group_shrinkage, bool print){
 
   // data
   mat Y = Data["Y"];
@@ -447,7 +448,6 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, st
 
   // prior
   double thetabar = Prior["thetabar"];
-  double taubar = Prior["taubar"];
   double betabarii = Prior["betabarii"];
   double taubarii = Prior["taubarii"];
   mat Aphi = Prior["Aphi"];
@@ -457,6 +457,8 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, st
 
   // mcmc
   int Rep = Mcmc["R"];
+  int initial_run = Mcmc["initial_run"];
+  int RepRun = Rep + initial_run;//////////////////
   int keep = Mcmc["keep"];
 
   // initialize
@@ -486,24 +488,21 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, st
   betabar(wchown).fill(betabarii);
   lamstar(wchown).fill(taubarii);
   vec tau = ones(L);
-  tau(0) = taubar;
   vec xitau = tau;
-  // List const& thetalist_true = Data["thetalist"];
-  // List thetalist = thetalist_true;
   List lambdalist = List(L);
   List xilambdalist = List(L);
   List thetalist = List(L);
   thetalist[L-1] = betaij;
   for(int ell=L-1;ell>=0;ell--){
     if(ell<L-1){
-      // thetalist[ell] = groupmean_cpp(betaij,list[L-1],npar[ell]);
       thetalist[ell] = groupmean_cpp(thetalist[ell+1],list[ell+1],npar[ell]);
     }
     lambdalist[ell] = ones(npar(ell));
     xilambdalist[ell] = ones(npar(ell));
   }
   vec sigmasq = ones(p);
-  // List const& thetalist = Data["thetalist"];
+  // List const& thetalist_true = Data["thetalist"];
+  // List thetalist = thetalist_true;
 
   // storage matrices
   mat phidraws(Rep/keep,sum(nphi));
@@ -523,7 +522,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, st
   }
 
   // MCMC loop
-  for (rep=0; rep<Rep; rep++){
+  for (rep=0; rep<RepRun; rep++){
 
     // -------------------------------------------------------------- //
     // higher level effects
@@ -573,60 +572,79 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, st
 
       // tau //
 
+      // if(ell>0){
+      //   mean = replace_cpp(list[ell],thetalist[ell-1]);
+      //   levelsums = sum(pow(as<vec>(thetalist[ell]) - mean,2)/(Psi_ellmone % as<vec>(lambdalist[ell])));
+      //   tau(ell) = 1.0/R::rgamma(0.5*(npar(ell)+1), 1.0/(1.0/xitau(ell)+0.5*as_scalar(levelsums)));
+      //   xitau(ell) = 1.0/R::rgamma(1,1.0/(1+1.0/tau(ell)));
+      // }
       if(ell>0){
         mean = replace_cpp(list[ell],thetalist[ell-1]);
         levelsums = sum(pow(as<vec>(thetalist[ell]) - mean,2)/(Psi_ellmone % as<vec>(lambdalist[ell])));
         tau(ell) = 1.0/R::rgamma(0.5*(npar(ell)+1), 1.0/(1.0/xitau(ell)+0.5*as_scalar(levelsums)));
         xitau(ell) = 1.0/R::rgamma(1,1.0/(1+1.0/tau(ell)));
       }
+      if(ell==0){
+        vec thetabar_vec = ones(1);
+        thetabar_vec.fill(thetabar);
+        mean = replace_cpp(list[ell],thetabar_vec);
+        levelsums = sum(pow(as<vec>(thetalist[ell]) - mean,2)/(Psi_ellmone % as<vec>(lambdalist[ell])));
+        tau(ell) = 1.0/R::rgamma(0.5*(npar(ell)+1), 1.0/(1.0/xitau(ell)+0.5*as_scalar(levelsums)));
+        xitau(ell) = 1.0/R::rgamma(1,1.0/(1+1.0/tau(ell)));
+      }
 
       // lambda //
+      
+      if(group_shrinkage!="ridge"){
+        
+        // local shrinkage active only for ell>1 (otherwise fix lambda=1)
+        if(ell>0){
+          
+          // shape: count children nodes at each level
+          counts = as<vec>(childrencounts[ell]);
+          
+          // rate: sums at each level
+          
+          // sums at level ell
+          Psi_ellmone = replace_cpp(list[ell],Psi_ellmone) % replace_cpp(list[ell],lambdalist[ell-1]);
+          mean = replace_cpp(list[ell],thetalist[ell-1]);
+          levelsums = pow(as<vec>(thetalist[ell])-mean,2)/(Psi_ellmone*tau(ell));
+          
+          // sums at levels greater than ell
+          for(int s=(ell+1);s<L;s++){
 
-      // lambda only defined for ell>1 (otherwise fix lambda=1)
-      if(ell>0){
+            // compute Psi minus one for level s
+            Psi_ellmone = replace_cpp(list[s],Psi_ellmone) % replace_cpp(list[s],lambdalist[s-1]);
 
-        // shape: count children nodes at each level
-        counts = 1 + as<vec>(childrencounts[ell]);
-
-        // rate: sums at each level
-
-        // sums at level ell
-        Psi_ellmone = replace_cpp(list[ell],Psi_ellmone) % replace_cpp(list[ell],lambdalist[ell-1]);
-        mean = replace_cpp(list[ell],thetalist[ell-1]);
-        levelsums = pow(as<vec>(thetalist[ell])-mean,2)/(Psi_ellmone*tau(ell));
-
-        // sums at levels greater than ell
-        for(int s=(ell+1);s<L;s++){
-
-          // compute Psi minus one for level s
-          Psi_ellmone = replace_cpp(list[s],Psi_ellmone) % replace_cpp(list[s],lambdalist[s-1]);
-
-          // compute sums of scaled differences in theta
-          mean = replace_cpp(list[s],thetalist[s-1]);
-          sums = pow(as<vec>(thetalist[s])-mean,2)/(Psi_ellmone*tau(s));
-          diffsums = groupsum_cpp(sums,replace_cpp(list[s],list[ell]),npar(ell));
-          levelsums = levelsums + replace_cpp(list[ell],diffsums);
-        }
-
-        if(shrinkage=="ridge"){
+            // compute sums of scaled differences in theta
+            mean = replace_cpp(list[s],thetalist[s-1]);
+            sums = pow(as<vec>(thetalist[s])-mean,2)/(Psi_ellmone*tau(s));
+            diffsums = groupsum_cpp(sums,replace_cpp(list[s],list[ell]),npar(ell));
+            levelsums = levelsums + replace_cpp(list[ell],diffsums);
+          }
+          
           lambda = ones(npar(ell));
+          xilambda = as<vec>(xilambdalist[ell]);
+          // lasso: Exp(1/2)=Gamma(1,1/2)
+          if(group_shrinkage=="lasso" && rep>=initial_run){
+            // rate = 0.5 + 0.5*levelsums;
+            // lambda = randg(npar(ell),ones(npar(ell))+0.5*counts,1/rate);
+            lambda = ones(npar(ell));
+          }
+          // lasso: C+(0,1)
+          if(group_shrinkage=="horseshoe" && rep>=initial_run){
+            scale = 1.0/xilambda + 0.5*levelsums;
+            lambda = randig(npar(ell),0.5+0.5*counts,scale);
+            // lambda = randig(npar(ell),ones(npar(ell)),scale);
+            scale = 1.0 + 1.0/lambda;
+            xilambda = randig(npar(ell),ones(npar(ell)),scale);
+          }
+          
+          // store draws
+          lambdalist[ell] = lambda;
+          xilambdalist[ell] = xilambda;
+          
         }
-        if(shrinkage=="lasso"){
-          // rate = 0.5 + 0.5*levelsums;
-          // lambda = randg(npar(ell),ones(npar(ell))+0.5*counts,1/rate);
-          lambda = ones(npar(ell));
-        }
-        if(shrinkage=="horseshoe"){
-          // lambda = randig(npar(ell),0.5+0.5*counts,
-          //                 1/as<vec>(xilambdalist[ell]) + 0.5*levelsums);
-          // xilambda = randig(npar(ell),ones(npar(ell)),1+1/lambda);
-          lambda = ones(npar(ell));
-        }
-
-        // store draws
-        lambdalist[ell] = lambda;
-        xilambdalist[ell] = xilambda;
-
       }
 
 
@@ -675,29 +693,33 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, st
 
     // save cross elasticities
     betaij = beta(wchcross);
+    thetalist[L-1] = betaij;
 
     // tau //
     levelsums = sum(pow(betaij - betabar(wchcross),2)/(Psi_Lmone % as<vec>(lambdalist[L-1])));
     tau(L-1) = 1.0/R::rgamma(0.5*(npar(L-1)+1), 1.0/(1.0/xitau(L-1)+0.5*as_scalar(levelsums)));
     xitau(L-1) = 1.0/R::rgamma(1,1.0/(1+1.0/tau(L-1)));
 
-    // lambda //
-
-    if(shrinkage=="ridge"){
-      lambda = ones(npar(L-1));
+    // lambda (default to ridge)//
+    lambda = ones(npar(L-1));
+    xilambda = as<vec>(xilambdalist[L-1]);
+    // lasso
+    if(product_shrinkage=="lasso" && rep>=initial_run){
+      vec mutilde = pow(2*tau(L-1)/pow(beta(wchcross)-betabar(wchcross),2),0.5);
+      lambda = 1/randinvgaussian(npar(L-1),mutilde,2); 
+      lambdalist[L-1] = lambda;
     }
-    if(shrinkage=="horseshoe"){
-      scale = 1/as<vec>(xilambdalist[L-1]) + 0.5*pow(beta(wchcross)-betabar(wchcross),2)/as_scalar(tau(L-1));
+    // horseshoe
+    if(product_shrinkage=="horseshoe" && rep>=initial_run){
+      scale = 1.0/xilambda + 0.5*pow(beta(wchcross)-betabar(wchcross),2)/as_scalar(tau(L-1));
       lambda = randig(npar(L-1),ones(npar(L-1)),scale);
-      scale = 1+1/lambda;
+      scale = 1.0 + 1.0/lambda;
       xilambda = randig(npar(L-1),ones(npar(L-1)),scale);
-      // lambda = ones(npar(L-1));
+      lambdalist[L-1] = lambda;
+      xilambdalist[L-1] = xilambda;
     }
 
-    // update list
-    thetalist[L-1] = betaij;
-    lambdalist[L-1] = lambda;
-    xilambdalist[L-1] = xilambda;
+
 
     // -------------------------------------------------------------- //
     // print time and store draws
@@ -706,19 +728,19 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, st
     if(print){
       // time
       if(rep==0){
-        if(timer.toc()/60.0*(Rep-rep-1)/(rep+1)<1){
-          Rprintf("  Estimated time: %.1f seconds \n",timer.toc()*(Rep-rep-1)/(rep+1));
+        if(timer.toc()/60.0*(RepRun-rep-1)/(rep+1)<1){
+          Rprintf("  Estimated time: %.1f seconds \n",timer.toc()*(RepRun-rep-1)/(rep+1));
         }
         else{
-          Rprintf("  Estimated time: %.1f minutes \n",timer.toc()/60.0*(Rep-rep-1)/(rep+1));
+          Rprintf("  Estimated time: %.1f minutes \n",timer.toc()/60.0*(RepRun-rep-1)/(rep+1));
         }
       }
-      if(Rep>50){
-        if ((rep+1)%(Rep/50)==0){
-          if(rep+1==Rep/50){
+      if(RepRun>50){
+        if ((rep+1)%(RepRun/50)==0){
+          if(rep+1==RepRun/50){
             Rprintf("  *");
           }
-          else if(rep<Rep-1){
+          else if(rep<RepRun-1){
             Rprintf("*");
           }
           else Rprintf("*\n");
@@ -727,8 +749,8 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, st
     }
 
     // store draws
-    if((rep+1)%keep==0){
-      mkeep = (rep+1)/keep;
+    if(rep>=initial_run && (rep+1)%keep==0){
+      mkeep = (rep-initial_run+1)/keep;
       betadraws(mkeep-1,span::all) = trans(beta);
       thetadraws(mkeep-1,span::all) = trans(unlist(thetalist,sum(npar)));
       lambdadraws(mkeep-1,span::all) = trans(unlist(lambdalist,sum(npar)));
@@ -824,7 +846,6 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, st
 //   thetalist[L-1] = betaij;
 //   for(int ell=L-1;ell>=0;ell--){
 //     if(ell<L-1){
-//       // thetalist[ell] = groupmean_cpp(betaij,list[L-1],npar[ell]);
 //       thetalist[ell] = groupmean_cpp(thetalist[ell+1],list[ell+1],npar[ell]);
 //     }
 //     lambdalist[ell] = ones(npar(ell));
@@ -880,7 +901,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, st
 //       //   ellmone.fill(as_scalar(1/tau(ell)));
 //       // }
 //       // v_kl = 1/(ellpone_sums + ellmone);
-//       // 
+//       //
 //       // // posterior mean
 //       // ellpone_sums = groupsum_cpp(as<vec>(thetalist[ell+1])/denom,list[ell+1],npar(ell));
 //       // if(ell>0){
@@ -892,7 +913,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, st
 //       //   ellmone.fill(as_scalar(thetabar/tau(ell)));
 //       // }
 //       // thetatilde = v_kl % (ellpone_sums + ellmone);
-//       
+// 
 //       // posterior variance
 //       denom = ell_sum_variance(lambdalist,list,tau,ell);
 //       ellpone_sums = groupsum_cpp(1/denom,list[L-1],npar(ell));

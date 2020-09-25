@@ -8,17 +8,17 @@ source(here("functions","simulation_functions.R"))
 sourceCpp(here("functions","shrinkage_mcmc.cpp"))
 
 # dimensions
-n = 100
-p = 12
+n = 50
+p = 50
 d = 1
 
 # tree
-# tree = matrix(c(rep(1:5,each=p/5),
-#                 rep(1:10,each=p/10),
-#                 1:p),nrow=p,ncol=3)
-tree = matrix(c(rep(1:2,each=p/2),
-                rep(1:4,each=p/4),
+tree = matrix(c(rep(1:5,each=p/5),
+                rep(1:10,each=p/10),
                 1:p),nrow=p,ncol=3)
+# tree = matrix(c(rep(1:2,each=p/2),
+#                 rep(1:4,each=p/4),
+#                 1:p),nrow=p,ncol=3)
 childrencounts = countchildren_cpp(tree)
 treeindex = createindex(tree)
 list = treeindex$list
@@ -28,8 +28,7 @@ L = ncol(tree)
 
 # simulate data
 set.seed(1)
-tausq0 = 1
-data = simdata_dense(n,p,d,tree,childrencounts,npar,c(1,2,tausq0))
+data = simdata_tree(n,p,d,tree,childrencounts,list,npar,0.95)
 data$npar = npar
 data$tree = tree
 data$list = list
@@ -65,7 +64,6 @@ Data = list(
 # priors
 Prior = list(
   thetabar=0, 
-  taubar=1, 
   betabarii=0, 
   taubarii=10,
   Aphi=.01*diag(p), 
@@ -76,26 +74,32 @@ Prior = list(
 
 # mcmc
 Mcmc = list(
-  R = 1000,
-  keep = 1
+  R = 500,
+  initial_run=0,
+  keep = 1,
+  burn_pct = 0.5
 )
 
 sourceCpp(here("functions","shrinkage_mcmc.cpp"))
-out = rSURhiershrinkage(Data,Prior,Mcmc,shrinkage="ridge",print=TRUE)
-out = rSURhiershrinkage(Data,Prior,Mcmc,shrinkage="horseshoe",print=TRUE)
+out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="ridge",group_shrinkage="ridge",print=TRUE)
+out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="lasso",group_shrinkage="ridge",print=TRUE)
+out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="horseshoe",group_shrinkage="ridge",print=TRUE)
+
+out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="ridge",group_shrinkage="horseshoe",print=TRUE)
+out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="horseshoe",group_shrinkage="horseshoe",print=TRUE)
 
 end = Mcmc$R/Mcmc$keep
-burn = 0.5*end
+burn = Mcmc$burn_pct*end
 # burn = 1
 
 # compute rmse
-Brmse = double(end-burn)
-for(r in 1:(end-burn)){
-  B = matrix(out$betadraws[burn+r,],p,p)
+Brmse = double(end)
+for(r in 1:end){
+  B = matrix(out$betadraws[r,],p,p)
   Brmse[r] = sqrt(mean((data$B[diag(p)!=1] - B[diag(p)!=1])^2))
 }
-mean(Brmse)
 plot(Brmse)
+mean(Brmse[burn:end])
 
 # theta (second level)
 matplot(out$thetadraws[,(npar[1]+1):cumsum(npar)[2]],type="l",col=rainbow(cumsum(npar)[2]))

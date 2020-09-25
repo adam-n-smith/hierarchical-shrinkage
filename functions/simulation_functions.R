@@ -77,7 +77,9 @@ createindex = function(tree){
   return(list(list=out,index=index,npar=npar))
   
 }
-simdata_dense = function(n,p,d,tree,childrencounts,npar,tau){
+
+# simulate data from hierarchical prior
+simdata_tree = function(n,p,d,tree,counts,list,npar,prop_sparse){
   
   L = ncol(tree)
   
@@ -86,12 +88,13 @@ simdata_dense = function(n,p,d,tree,childrencounts,npar,tau){
   Sigma = diag(sigmasq)
   
   # global variances and initial mean
+  tau = rep(1,L)
+  tau[L] = 1/rgamma(1,2,2)
   mean = 0
   
   # level 1
   lambda = rep(1,npar[1])
   theta = mean + sqrt(tau[1])*rnorm(npar[1])
-  # theta = c(-2,-1,2,1)
   thetalist = list()
   lambdalist = list()
   thetalist[[1]] = theta
@@ -100,8 +103,8 @@ simdata_dense = function(n,p,d,tree,childrencounts,npar,tau){
   # levels 2-L
   for(ell in 2:L){
     
-    # product of previous lambda parmaeters
-    Psi = create_Psi_ellmone_cpp(lambdalist,childrencounts,list,npar,ell)
+    # product of previous lambda parameters
+    Psi = create_Psi_ellmone_cpp(lambdalist,counts,list,npar,ell)
     
     # mean as theta from last level
     mean = theta[list[[ell]]]
@@ -115,7 +118,7 @@ simdata_dense = function(n,p,d,tree,childrencounts,npar,tau){
     thetasd = sqrt(lambda*Psi*tau[ell])
     theta = mean + thetasd*rnorm(npar[ell])
     if(ell==L){
-      theta = mean + rbinom(npar[ell],1,0.05)*thetasd*rnorm(npar[ell])
+      theta = mean + rbinom(npar[ell],1,1-prop_sparse)*thetasd*rnorm(npar[ell])
     }
 
     # save
@@ -160,6 +163,8 @@ simdata_dense = function(n,p,d,tree,childrencounts,npar,tau){
               E=E))
   
 }
+
+# simulate data from sparse prior
 simdata_sparse = function(n,p,d,prop_sparse){
   
   # observational error
@@ -202,3 +207,158 @@ simdata_sparse = function(n,p,d,prop_sparse){
   return(list(Y=Y,X=X,B=B,Clist=Clist,tau=tau))
   
 }
+
+# function to permute a tree
+permute_tree = function(tree){
+  
+  L = ncol(tree)
+  for(i in 1:(L-1)){
+    groups = unique(tree[,i])
+    tree[,i] = rep(groups,times=nrow(tree)/length(groups))
+  }
+  
+  return(tree)
+}
+
+# simulate a batch of data sets to estimate in parallel
+simdata_batch = function(pvec,nrep,prior,prop_sparse){
+  
+  d = 1
+  
+  # generate data
+  simdata = NULL
+  j = 1
+  for(p in p_vec) {
+    
+    # tree for DGP
+    tree_dgp = matrix(c(rep(1:5,each=p/5),
+                        rep(1:10,each=p/10),
+                        1:p),nrow=p,ncol=3)
+    # tree_dgp = matrix(c(rep(1:2,each=p/2),
+    #                     rep(1:4,each=p/4),
+    #                     1:p),nrow=p,ncol=3)
+    childrencounts_dgp = countchildren_cpp(tree_dgp)
+    treeindex_dgp = createindex(tree_dgp)
+    list_dgp = treeindex_dgp$list
+    index_dgp = treeindex_dgp$index
+    npar_dgp = unlist(lapply(list_dgp,length))
+    L = ncol(tree_dgp)
+    
+    if(prior=="tree"){
+      
+      # wrong tree
+      tree_not = permute_tree(tree_dgp)
+      childrencounts_not = countchildren_cpp(tree_not)
+      treeindex_not = createindex(tree_not)
+      list_not = treeindex_not$list
+      index_not = treeindex_not$index
+      npar_not = unlist(lapply(list_not,length))
+      
+      simdata[j]  = list(nrep)
+      tmp = NULL
+      for(b in 1:nrep){
+        
+        # simulate data
+        tmp[[b]] = simdata_tree(n,p,d,tree_dgp,childrencounts_dgp,list_dgp,npar_dgp,prop_sparse)
+        tmp[[b]]$npar = npar_dgp
+        tmp[[b]]$tree = tree_dgp
+        tmp[[b]]$list = list_dgp
+        tmp[[b]]$childrencounts = childrencounts_dgp
+        tmp[[b]]$npar_not = npar_not
+        tmp[[b]]$tree_not = tree_not
+        tmp[[b]]$list_not = list_not
+        tmp[[b]]$childrencounts_not = childrencounts_not
+        
+      }
+      
+      simdata[[j]] = tmp
+      j = j+1 
+    }
+    
+    if(prior=="sparse"){
+      
+      simdata[j]  = list(nrep)
+      tmp = NULL
+      for(b in 1:nrep){
+        
+        # simulate data
+        tmp[[b]] = simdata_sparse(n,p,d,prop_sparse)
+        tmp[[b]]$npar = npar_dgp
+        tmp[[b]]$tree = tree_dgp
+        tmp[[b]]$list = list_dgp
+        tmp[[b]]$childrencounts = childrencounts_dgp
+        
+      }
+      
+      simdata[[j]] = tmp
+      j = j+1
+      
+    }
+  }
+  
+  return(simdata)
+  
+}
+
+# fit models on batch data in parallel
+fit_parallel = function(simdata,Mcmc,p_vec,shrinkage,model,dgp){
+  
+  
+  nrep = length(simdata[[1]])
+  end = Mcmc$R/Mcmc$keep
+  burn = Mcmc$burn_pct*end
+
+  itime = proc.time()[3]
+  out = foreach(j=1:length(p_vec), .combine='cbind') %:% 
+    foreach(b=1:nrep, .combine='rbind') %:% 
+    foreach(m=shrinkage, .combine='rbind', 
+            .packages=c("Rcpp","RcppArmadillo","here"),
+            .options.snow=opts) %dopar% { 
+      
+      sourceCpp(here("functions","shrinkage_mcmc.cpp"))
+      
+      data = simdata[[j]][[b]]
+      p = p_vec[j]
+      
+      # priors
+      Prior = list(thetabar=0, taubar=1, betabarii=0, taubarii=10,
+                   Aphi=.01*diag(p), phibar=double(p), a=5, b=5)
+      
+      # fit model
+      if(model=="tree_true"){
+        Data = list(Y=data$Y, X=data$X, Clist=data$Clist, tree=data$tree,
+                    childrencounts=data$childrencounts, list=data$list, npar=data$npar)
+        fit = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage=m,group_shrinkage="ridge",print=FALSE)
+      }
+      if(model=="tree_not"){
+        Data = list(Y=data$Y, X=data$X, Clist=data$Clist, tree=data$tree_not,
+                    childrencounts=data$childrencounts_not, list=data$list_not, npar=data$npar_not)
+        fit = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage=m,group_shrinkage="ridge",print=FALSE)
+      }
+      if(model=="sparse"){
+        Data = list(Y=data$Y, X=data$X, Clist=data$Clist, tree=data$tree)
+        fit = rSURshrinkage(Data,Prior,Mcmc,shrinkage=m,print=FALSE)
+      }
+      
+      # compute rmse
+      Brmse = double(end-burn)
+      for(r in 1:(end-burn)){
+        B = matrix(fit$betadraws[burn+r,],p,p)
+        Brmse[r] = sqrt(mean((data$B[diag(p)!=1] - B[diag(p)!=1])^2))
+      }
+      
+      # save 
+      mean(Brmse)
+      
+    }
+  
+  colnames(out) = paste0("p_",p_vec,"_",dgp)
+  
+  ctime = proc.time()[3]
+  cat("\n Total Time:",round((ctime - itime)/60,2),"minutes",fill = TRUE)
+  
+  return(out)
+  
+}
+
+
