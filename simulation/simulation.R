@@ -75,7 +75,7 @@ Prior = list(
 # mcmc
 Mcmc = list(
   R = 500,
-  initial_run=0,
+  initial_run=100,
   keep = 1,
   burn_pct = 0.5
 )
@@ -86,6 +86,7 @@ out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="lasso",group_shrinkag
 out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="horseshoe",group_shrinkage="ridge",print=TRUE)
 
 out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="ridge",group_shrinkage="horseshoe",print=TRUE)
+out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="lasso",group_shrinkage="horseshoe",print=TRUE)
 out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="horseshoe",group_shrinkage="horseshoe",print=TRUE)
 
 end = Mcmc$R/Mcmc$keep

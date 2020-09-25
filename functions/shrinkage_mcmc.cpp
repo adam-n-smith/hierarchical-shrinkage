@@ -175,16 +175,11 @@ vec randinvgaussian(int const& n, vec const& mu, double const& lambda){
   vec y = pow(nu,2);
   vec musq = pow(mu,2);
   vec output = mu + musq%y/2/lambda - mu/2/lambda%sqrt(4*lambda*mu%y + musq%pow(y,2));
+  output(find(output<1.0e-16)).fill(1.0e-16);
   uvec wch = find(randu(n) > mu/(mu+output));
   output(wch) = musq(wch)/output(wch);
   return output;
 }
-
-
-
-
-
-
 
 //[[Rcpp::export]]
 vec drawbeta(mat const& Y, mat const& X, bool fast){
@@ -458,7 +453,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc,
   // mcmc
   int Rep = Mcmc["R"];
   int initial_run = Mcmc["initial_run"];
-  int RepRun = Rep + initial_run;//////////////////
+  int RepRun = Rep + initial_run;
   int keep = Mcmc["keep"];
 
   // initialize
@@ -534,7 +529,6 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc,
       Psi_ellmone = create_Psi_ellmone_cpp(lambdalist,childrencounts,list,npar,ell+1);
       vec last_lam = lambdalist[ell];
       vec last_counts = childrencounts[ell];
-      last_lam(find(last_counts==0)).fill(1); ///////////// delete?????
       Psi_ell = replace_cpp(list[ell+1],Psi_ellmone) % replace_cpp(list[ell+1],last_lam);
 
       // theta //
@@ -571,13 +565,6 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc,
       thetalist[ell] = theta;
 
       // tau //
-
-      // if(ell>0){
-      //   mean = replace_cpp(list[ell],thetalist[ell-1]);
-      //   levelsums = sum(pow(as<vec>(thetalist[ell]) - mean,2)/(Psi_ellmone % as<vec>(lambdalist[ell])));
-      //   tau(ell) = 1.0/R::rgamma(0.5*(npar(ell)+1), 1.0/(1.0/xitau(ell)+0.5*as_scalar(levelsums)));
-      //   xitau(ell) = 1.0/R::rgamma(1,1.0/(1+1.0/tau(ell)));
-      // }
       if(ell>0){
         mean = replace_cpp(list[ell],thetalist[ell-1]);
         levelsums = sum(pow(as<vec>(thetalist[ell]) - mean,2)/(Psi_ellmone % as<vec>(lambdalist[ell])));
@@ -625,17 +612,10 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc,
           
           lambda = ones(npar(ell));
           xilambda = as<vec>(xilambdalist[ell]);
-          // lasso: Exp(1/2)=Gamma(1,1/2)
-          if(group_shrinkage=="lasso" && rep>=initial_run){
-            // rate = 0.5 + 0.5*levelsums;
-            // lambda = randg(npar(ell),ones(npar(ell))+0.5*counts,1/rate);
-            lambda = ones(npar(ell));
-          }
           // lasso: C+(0,1)
           if(group_shrinkage=="horseshoe" && rep>=initial_run){
             scale = 1.0/xilambda + 0.5*levelsums;
             lambda = randig(npar(ell),0.5+0.5*counts,scale);
-            // lambda = randig(npar(ell),ones(npar(ell)),scale);
             scale = 1.0 + 1.0/lambda;
             xilambda = randig(npar(ell),ones(npar(ell)),scale);
           }
@@ -696,7 +676,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc,
     thetalist[L-1] = betaij;
 
     // tau //
-    levelsums = sum(pow(betaij - betabar(wchcross),2)/(Psi_Lmone % as<vec>(lambdalist[L-1])));
+    levelsums = sum(pow(betaij - betabar(wchcross),2)/Psi_Lmone/as<vec>(lambdalist[L-1]));
     tau(L-1) = 1.0/R::rgamma(0.5*(npar(L-1)+1), 1.0/(1.0/xitau(L-1)+0.5*as_scalar(levelsums)));
     xitau(L-1) = 1.0/R::rgamma(1,1.0/(1+1.0/tau(L-1)));
 
@@ -705,15 +685,15 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc,
     xilambda = as<vec>(xilambdalist[L-1]);
     // lasso
     if(product_shrinkage=="lasso" && rep>=initial_run){
-      vec mutilde = pow(2*tau(L-1)/pow(beta(wchcross)-betabar(wchcross),2),0.5);
+      vec mutilde = pow(2*Psi_Lmone*tau(L-1)/pow(beta(wchcross)-betabar(wchcross),2),0.5);
       lambda = 1/randinvgaussian(npar(L-1),mutilde,2); 
       lambdalist[L-1] = lambda;
     }
     // horseshoe
     if(product_shrinkage=="horseshoe" && rep>=initial_run){
-      scale = 1.0/xilambda + 0.5*pow(beta(wchcross)-betabar(wchcross),2)/as_scalar(tau(L-1));
+      scale = 1.0/xilambda + 0.5*pow(beta(wchcross)-betabar(wchcross),2)/Psi_Lmone/as_scalar(tau(L-1));
       lambda = randig(npar(L-1),ones(npar(L-1)),scale);
-      scale = 1.0 + 1.0/lambda;
+      scale = 1 + 1.0/lambda;
       xilambda = randig(npar(L-1),ones(npar(L-1)),scale);
       lambdalist[L-1] = lambda;
       xilambdalist[L-1] = xilambda;
