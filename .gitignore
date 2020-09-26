@@ -12,7 +12,7 @@
 .Ruserdata
 
 # build files
-build/*
+build/output/*
 
 # miscellaneous
 .DS_Store
