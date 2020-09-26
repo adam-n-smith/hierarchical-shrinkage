@@ -165,12 +165,12 @@ matplot(out_hierhorse$thetadraws[,(cumsum(npar)[1]+2):cumsum(npar)[2]],type="l")
 
 # beta
 wchown = as.vector(diag(p)==1)
-hist(apply(out.hierhorse$betadraws[burn:end,],2,mean)[wchown])
-hist(apply(out.hierhorse$betadraws[burn:end,],2,mean)[!wchown])
+hist(apply(out_hierhorse$betadraws,2,mean)[wchown])
+hist(apply(out_hierhorse$betadraws,2,mean)[!wchown])
 
 # sigmasq
-hist(apply(out.hierhorse$sigmasqdraws,2,mean))
-matplot(sqrt(out.hierhorse$sigmasqdraws),type="l")
+hist(apply(out_hierhorse$sigmasqdraws,2,mean))
+matplot(sqrt(out_hierhorse$sigmasqdraws),type="l")
 
 # tau
 matplot(sqrt(out_hierhorse$taudraws),type="l")

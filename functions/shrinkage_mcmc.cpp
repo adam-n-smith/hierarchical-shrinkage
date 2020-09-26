@@ -53,6 +53,14 @@ vec replace_cpp(vec const& x, vec const& y){
   return output;
 }
 
+// replace function
+//[[Rcpp::export]]
+mat clean_mat(mat X){
+  X(find(X<1.0e-16)).fill(1.0e-16);
+  X(find(X>1.0e16)).fill(1.0e16);
+  return X;
+}
+
 //[[Rcpp::export]]
 List countchildren_cpp(mat const& tree){
   
@@ -106,7 +114,6 @@ vec create_Psi_ellmone_cpp(List const& lambdalist, List const& counts, List cons
       for(int j=2;j<level;j++){
         vec last_lam = lambdalist[j-1];
         vec last_counts = counts[j-1];
-        last_lam(find(last_counts==0)).fill(1);
         Psi_ellmone = replace_cpp(list[j],Psi_ellmone) % replace_cpp(list[j],last_lam);
       }
     }
@@ -158,9 +165,9 @@ vec randig(int const& n, vec const& shape, vec const& scale){
 //[[Rcpp::export]]
 vec randinvgaussian(int const& n, vec const& mu, double const& lambda){
   vec nu = randn(n);
-  vec y = pow(nu,2);
-  vec musq = pow(mu,2);
-  vec output = mu + musq%y/2/lambda - mu/2/lambda%sqrt(4*lambda*mu%y + musq%pow(y,2));
+  vec y = pow(nu,2.0);
+  vec musq = pow(mu,2.0);
+  vec output = mu + musq%y/2/lambda - mu/2/lambda%sqrt(4*lambda*mu%y + musq%pow(y,2.0));
   output(find(output<1.0e-16)).fill(1.0e-16);
   uvec wch = find(randu(n) > mu/(mu+output));
   output(wch) = musq(wch)/output(wch);
@@ -308,6 +315,7 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
       Ct = C/sqrt(sigmasq(i));
       irootXt = solve(trimatu(chol(symmatu(XLamXp/sigmasq(i) + eye(n,n)))),eye(n,n));
       projmat = eye(n,n) - Xt*(Lam - Lam*trans(Xt)*irootXt*trans(irootXt)*Xt*Lam)*trans(Xt);
+      projmat = clean_mat(projmat);
       irootC = solve(trimatu(chol(symmatu(trans(Ct)*projmat*Ct + Aphi(i,i)))), eye(nphi(i),nphi(i)));
       phitilde = (irootC*trans(irootC))*(trans(Ct)*projmat*Y.col(i)/sqrt(sigmasq(i)) + Aphi(i,i)*phibar(i));
       phi(span(cumnphi(i)-nphi(i),cumnphi(i)-1)) = phitilde + irootC*randn(nphi(i));
@@ -330,7 +338,7 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
     }
     
     // tau ~ C+(0,1)//
-    levelsums = sum(pow(beta(wchcross),2)/lambda);
+    levelsums = sum(pow(beta(wchcross),2.0)/lambda);
     tau = 1/R::rgamma(0.5*(p*p-p+1), 1/as_scalar(1/xitau+0.5*levelsums));
     xitau = 1/R::rgamma(1,as_scalar(1/(1+1/tau)));
     
@@ -341,12 +349,12 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
     }
     // lasso: Exp(1/2)=Gamma(1,1/2)
     if(Shrinkage=="lasso"){
-      vec mutilde = pow(2*tau(0)/pow(beta(wchcross),2),0.5);
+      vec mutilde = pow(2*tau(0)/pow(beta(wchcross),2.0),0.5);
       lambda = 1/randinvgaussian(npar,mutilde,2); 
     }
     // horseshoe: C+(0,1)
     if(Shrinkage=="horseshoe"){
-      scale = 1/xilambda + 0.5*pow(beta(wchcross),2)/as_scalar(tau);
+      scale = 1/xilambda + 0.5*pow(beta(wchcross),2.0)/as_scalar(tau);
       lambda = randig(npar,ones(npar),scale);
       scale = 1+1/lambda;
       xilambda = randig(npar,ones(npar),scale);
@@ -485,8 +493,6 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
     xilambdalist[ell] = ones(npar(ell));
   }
   vec sigmasq = ones(p);
-  // List const& thetalist_true = Data["thetalist"];
-  // List thetalist = thetalist_true;
 
   // storage matrices
   mat phidraws(Rep/keep,sum(nphi));
@@ -509,7 +515,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
   for (rep=0; rep<RepRun; rep++){
 
     // -------------------------------------------------------------- //
-    // higher level effects
+    // higher-level effects
     // -------------------------------------------------------------- //
 
     for(int ell=L-2;ell>=0;ell--){
@@ -556,7 +562,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
       // tau //
       if(ell>0){
         mean = replace_cpp(list[ell],thetalist[ell-1]);
-        levelsums = sum(pow(as<vec>(thetalist[ell]) - mean,2)/(Psi_ellmone % as<vec>(lambdalist[ell])));
+        levelsums = sum(pow(as<vec>(thetalist[ell]) - mean,2.0)/(Psi_ellmone % as<vec>(lambdalist[ell])));
         tau(ell) = 1.0/R::rgamma(0.5*(npar(ell)+1), 1.0/(1.0/xitau(ell)+0.5*as_scalar(levelsums)));
         xitau(ell) = 1.0/R::rgamma(1,1.0/(1+1.0/tau(ell)));
       }
@@ -564,7 +570,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
         vec thetabar_vec = ones(1);
         thetabar_vec.fill(thetabar);
         mean = replace_cpp(list[ell],thetabar_vec);
-        levelsums = sum(pow(as<vec>(thetalist[ell]) - mean,2)/(Psi_ellmone % as<vec>(lambdalist[ell])));
+        levelsums = sum(pow(as<vec>(thetalist[ell]) - mean,2.0)/(Psi_ellmone % as<vec>(lambdalist[ell])));
         tau(ell) = 1.0/R::rgamma(0.5*(npar(ell)+1), 1.0/(1.0/xitau(ell)+0.5*as_scalar(levelsums)));
         xitau(ell) = 1.0/R::rgamma(1,1.0/(1+1.0/tau(ell)));
       }
@@ -584,7 +590,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
           // sums at level ell
           Psi_ellmone = replace_cpp(list[ell],Psi_ellmone) % replace_cpp(list[ell],lambdalist[ell-1]);
           mean = replace_cpp(list[ell],thetalist[ell-1]);
-          levelsums = pow(as<vec>(thetalist[ell])-mean,2)/(Psi_ellmone*tau(ell));
+          levelsums = pow(as<vec>(thetalist[ell])-mean,2.0)/(Psi_ellmone*tau(ell));
           
           // sums at levels greater than ell
           for(int s=(ell+1);s<L;s++){
@@ -594,13 +600,14 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
 
             // compute sums of scaled differences in theta
             mean = replace_cpp(list[s],thetalist[s-1]);
-            sums = pow(as<vec>(thetalist[s])-mean,2)/(Psi_ellmone*tau(s));
+            sums = pow(as<vec>(thetalist[s])-mean,2.0)/(Psi_ellmone*tau(s));
             diffsums = groupsum_cpp(sums,replace_cpp(list[s],list[ell]),npar(ell));
             levelsums = levelsums + replace_cpp(list[ell],diffsums);
           }
           
           lambda = ones(npar(ell));
           xilambda = as<vec>(xilambdalist[ell]);
+          
           // horseshoe: C+(0,1)
           if(group_shrinkage=="horseshoe" && rep>=initial_run){
             scale = 1.0/xilambda + 0.5*levelsums;
@@ -620,7 +627,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
     }
 
     // -------------------------------------------------------------- //
-    // phi, beta, sigmasq
+    // product-level elasticities + phi + sigmasq
     // -------------------------------------------------------------- //
 
     Psi_Lmone = create_Psi_ellmone_cpp(lambdalist,childrencounts,list,npar,L);
@@ -639,7 +646,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
       Ct = C/sqrt(sigmasq(i));
       irootXt = solve(trimatu(chol(symmatu(XLamXp/sigmasq(i) + eye(n,n)))),eye(n,n));
       projmat = eye(n,n) - Xt*(Lam - Lam*trans(Xt)*irootXt*trans(irootXt)*Xt*Lam)*trans(Xt);
-      projmat(find(projmat<1.0e-16)).fill(1.0e-16);
+      projmat = clean_mat(projmat);
       irootC = solve(trimatu(chol(symmatu(trans(Ct)*projmat*Ct + Aphi(i,i)))), eye(nphi(i),nphi(i)));
       phitilde = (irootC*trans(irootC))*(trans(Ct)*projmat*Y.col(i)/sqrt(sigmasq(i)) + Aphi(i,i)*phibar(i));
       phi(span(cumnphi(i)-nphi(i),cumnphi(i)-1)) = phitilde + irootC*randn(nphi(i));
@@ -666,22 +673,24 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
     thetalist[L-1] = betaij;
 
     // tau //
-    levelsums = sum(pow(betaij - betabar(wchcross),2)/Psi_Lmone/as<vec>(lambdalist[L-1]));
+    levelsums = sum(pow(betaij - betabar(wchcross),2.0)/Psi_Lmone/as<vec>(lambdalist[L-1]));
     tau(L-1) = 1.0/R::rgamma(0.5*(npar(L-1)+1), 1.0/(1.0/xitau(L-1)+0.5*as_scalar(levelsums)));
     xitau(L-1) = 1.0/R::rgamma(1,1.0/(1+1.0/tau(L-1)));
 
-    // lambda (default to ridge)//
+    // lambda (default to ridge)
     lambda = ones(npar(L-1));
     xilambda = as<vec>(xilambdalist[L-1]);
-    // lasso
+    
+    // lasso: Exp(1/2)=Gamma(1,1/2)
     if(product_shrinkage=="lasso" && rep>=initial_run){
-      vec mutilde = pow(2*Psi_Lmone*tau(L-1)/pow(beta(wchcross)-betabar(wchcross),2),0.5);
+      vec mutilde = pow(2.0*Psi_Lmone*tau(L-1)/pow(beta(wchcross)-betabar(wchcross),2.0),0.5);
       lambda = 1/randinvgaussian(npar(L-1),mutilde,2); 
       lambdalist[L-1] = lambda;
     }
-    // horseshoe
+    
+    // horseshoe: C+(0,1)
     if(product_shrinkage=="horseshoe" && rep>=initial_run){
-      scale = 1.0/xilambda + 0.5*pow(beta(wchcross)-betabar(wchcross),2)/Psi_Lmone/as_scalar(tau(L-1));
+      scale = 1.0/xilambda + 0.5*pow(beta(wchcross)-betabar(wchcross),2.0)/Psi_Lmone/as_scalar(tau(L-1));
       lambda = randig(npar(L-1),ones(npar(L-1)),scale);
       scale = 1 + 1.0/lambda;
       xilambda = randig(npar(L-1),ones(npar(L-1)),scale);

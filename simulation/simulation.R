@@ -58,7 +58,6 @@ Data = list(
   tree=data$tree,
   childrencounts=data$childrencounts, 
   list=data$list, 
-  thetalist=data$thetalist, 
   npar=data$npar
 )
 
