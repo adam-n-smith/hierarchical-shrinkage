@@ -5,6 +5,7 @@ library(here)
 library(reshape2)
 
 source(here("functions","simulation_functions.R"))
+source(here("functions","shrinkage_functions.R"))
 sourceCpp(here("functions","shrinkage_mcmc.cpp"))
 
 # dimensions
@@ -81,13 +82,13 @@ Mcmc = list(
 )
 
 sourceCpp(here("functions","shrinkage_mcmc.cpp"))
-out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="ridge",group_shrinkage="ridge",print=TRUE)
-out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="lasso",group_shrinkage="ridge",print=TRUE)
-out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="horseshoe",group_shrinkage="ridge",print=TRUE)
+out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="ridge",group="ridge"),print=TRUE)
+out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="lasso",group="ridge"),print=TRUE)
+out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="horseshoe",group="ridge"),print=TRUE)
 
-out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="ridge",group_shrinkage="horseshoe",print=TRUE)
-out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="lasso",group_shrinkage="horseshoe",print=TRUE)
-out = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage="horseshoe",group_shrinkage="horseshoe",print=TRUE)
+out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="ridge",group="horseshoe"),print=TRUE)
+out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="lasso",group="horseshoe"),print=TRUE)
+out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="horseshoe",group="horseshoe"),print=TRUE)
 
 end = Mcmc$R/Mcmc$keep
 burn = Mcmc$burn_pct*end

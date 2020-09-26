@@ -1,74 +1,24 @@
-library(gtools)
-library(prodlim)
 library(Rcpp)
 library(RcppArmadillo)
 library(here)
 
-sourceCpp(here("analysis","code","horse_mcmc.cpp"))
+source(here("functions","shrinkage_functions.R"))
+sourceCpp(here("functions","shrinkage_mcmc.cpp"))
+
 load(here("build","output","store_panel.RData"))
 
-createindex = function(tree){
-  
-  # number of levels
-  L = ncol(tree)
-  
-  # index positions of each element from current parameter vector
-  K = max(tree[,1])
-  indexpairlast = permutations(K,2,1:K,2,repeats.allowed=TRUE)
-  
-  # fill in parameter index
-  out = NULL
-  out[[1]] = rep(1,nrow(indexpairlast))
-  
-  # repeat for the remaining levels
-  for(i in 2:L){
-    subtree = unique(tree[,1:i])
-    K = max(subtree)
-    
-    # group-level parameters assumed to be assumtric, use "combinations" to assume symmetry
-    if(i<L){
-      
-      # index positions of each element from current parameter vector
-      indexpair = permutations(K,2,1:K,repeats.allowed=TRUE)
-      
-      # index positions of each element from last level's parameter vector
-      indexpairlast = permutations(max(tree[,i-1]),2,1:max(tree[,i-1]),repeats.allowed=TRUE)
-      
-      # match current positions with last positions
-      index = matrix(subtree[indexpair,i-1],ncol=2)
-      match = apply(index,1,function(x)row.match(x,indexpairlast))
-      out[[i]] = match
-    }
-    
-    # SKU-level parameters
-    else{
-      
-      # index positions of each element from current parameter vector
-      indexpair = permutations(K,2,1:K,repeats.allowed=TRUE)
-      
-      # index positions of each element from last level's parameter vector
-      indexpairlast = permutations(max(tree[,i-1]),2,1:max(tree[,i-1]),repeats.allowed=TRUE)
-      
-      # match current positions with last positions
-      index = matrix(subtree[indexpair,i-1],ncol=2)
-      match = apply(index,1,function(x)row.match(x,indexpairlast))
-      
-      # ignore own elasticities
-      own = apply(indexpair,1,function(x)x[1]==x[2])
-      out[[i]] = match[!own]
-    }
-  }
-  
-  return(out)
-  
-}
-
 childrencounts = countchildren_cpp(tree)
-list = createindex(tree)
+treeindex = createindex(tree)
+list = treeindex$list
+index = treeindex$index
 npar = unlist(lapply(list,length))
+L = ncol(tree)
 p = nrow(tree)
 
-# training/test data
+# --------------------------------------------------------- #
+# split data into training/test
+# --------------------------------------------------------- #
+
 set.seed(999)
 nweeks = nrow(demand)
 inweeks = sample(1:nweeks,80)
@@ -82,7 +32,7 @@ Ytest = demand %>%
   select(starts_with("UNITS")) %>%
   as.matrix()
 X = prices %>%
-  # slice(inweeks) %>%
+  slice(inweeks) %>%
   select(starts_with("PRICE")) %>%
   as.matrix()
 Xtest = prices %>%
@@ -130,6 +80,38 @@ for(i in 1:p){
 cumnphi = c(0,cumsum(nphivec))
 
 # --------------------------------------------------------- #
+# sparse models
+# --------------------------------------------------------- #
+
+# data
+Data = list(
+  Y = Y,
+  X = X,
+  Clist = Clist
+)
+
+# priors
+Prior = list(
+  thetabar = 0,
+  betabarii = -3,
+  taubarii = 1,
+  Aphi = .01*diag(nphi),
+  phibar = double(nphi),
+  a = 5,
+  b = 5
+)
+
+# mcmc
+Mcmc = list(
+  R = 500,
+  keep = 1
+)
+
+out_ridge = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="ridge",print=TRUE)
+out_lasso = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="lasso",print=TRUE)
+out_horse = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="horseshoe",print=TRUE)
+
+# --------------------------------------------------------- #
 # hierarchical models
 # --------------------------------------------------------- #
 
@@ -147,7 +129,6 @@ Data = list(
 # priors
 Prior = list(
   thetabar = 0,
-  taubar = 1,
   betabarii = -3,
   taubarii = 1,
   Aphi = .01*diag(nphi),
@@ -156,25 +137,31 @@ Prior = list(
   b = 5
 )
 
-# Mcmc
+# mcmc
 Mcmc = list(
-  R = 1000,
-  keep = 1
+  R = 100,
+  initial_run=0,
+  keep = 1,
+  burn_pct = 0.5
 )
 
-# sourceCpp("code/horse_mcmc.cpp")
-out.hierridge = rSURhiershrinkage(Data,Prior,Mcmc,shrinkage="ridge",print=TRUE)
-# out.hierlasso = rSURhiershrinkage(Data,Prior,Mcmc,shrinkage="lasso",print=TRUE)
-out.hierhorse = rSURhiershrinkage(Data,Prior,Mcmc,shrinkage="horseshoe",print=TRUE)
-# out.hierhorse = rSURhorse(Data,Prior,Mcmc,hierarchical=TRUE,propagate=FALSE,print=TRUE)
+sourceCpp(here("functions","shrinkage_mcmc.cpp"))
+
+out_hierridge = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="ridge",group="ridge"),print=TRUE)
+out_hierlasso = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="lasso",group="ridge"),print=TRUE)
+out_hierhorse = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="horseshoe",group="ridge"),print=TRUE)
+
+out_hierridge = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="ridge",group="horseshoe"),print=TRUE)
+out_hierlasso = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="lasso",group="horseshoe"),print=TRUE)
+out_hierhorse = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="horseshoe",group="horseshoe"),print=TRUE)
 
 # thetas
-matplot(out.hierhorse$thetadraws[,1:npar[1]],type="l",col=1:npar[1])
+matplot(out_hierhorse$thetadraws[,1:npar[1]],type="l",col=1:npar[1])
 for(i in 1:npar[1]){
-  plot(out.hierhorse$thetadraws[,i],type="l")
+  plot(out_hierhorse$thetadraws[,i],type="l")
   abline(h=0)
 }
-matplot(out.hierhorse$thetadraws[,(cumsum(npar)[1]+2):cumsum(npar)[2]],type="l")
+matplot(out_hierhorse$thetadraws[,(cumsum(npar)[1]+2):cumsum(npar)[2]],type="l")
 
 # beta
 wchown = as.vector(diag(p)==1)
@@ -186,50 +173,4 @@ hist(apply(out.hierhorse$sigmasqdraws,2,mean))
 matplot(sqrt(out.hierhorse$sigmasqdraws),type="l")
 
 # tau
-matplot(sqrt(out.hierhorse$taudraws),type="l")
-
-# --------------------------------------------------------- #
-# benchmark models
-# --------------------------------------------------------- #
-
-# data
-Data = list(
-  Y = Y,
-  X = X,
-  Clist = Clist
-)
-
-# priors
-Prior = list(
-  betabarii = -3,
-  taubarii = 1,
-  Aphi = .01*diag(nphi),
-  phibar = double(nphi),
-  a = 5,
-  b = 5
-)
-
-# Mcmc
-Mcmc = list(
-  R = 100,
-  keep = 1
-)
-
-# sourceCpp("code/horse_mcmc.cpp")
-out.ridge = rSURshrinkage(Data,Prior,Mcmc,shrinkage="ridge",print=TRUE)
-out.lasso = rSURshrinkage(Data,Prior,Mcmc,shrinkage="lasso",print=TRUE)
-out.horse = rSURshrinkage(Data,Prior,Mcmc,shrinkage="horseshoe",print=TRUE)
-
-# beta
-wchown = as.vector(diag(p)==1)
-hist(apply(out.ridge$betadraws,2,mean)[wchown])
-hist(apply(out.ridge$betadraws,2,mean)[!wchown])
-
-# sigmasq
-hist(apply(out.horse$sigmasqdraws,2,mean))
-
-# tau
-matplot(sqrt(out.horse$taudraws),type="l")
-
-# sigmasq
-matplot(sqrt(out.horse$lambdadraws),type="l")
+matplot(sqrt(out_hierhorse$taudraws),type="l")
