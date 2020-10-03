@@ -4,6 +4,10 @@
 using namespace arma;
 using namespace Rcpp;
 
+// ---------------------------------------------------------------------- //
+// data manipulation functions
+// ---------------------------------------------------------------------- //
+
 // unlist function
 vec unlist(List const& list, int const& total_length){
   
@@ -51,14 +55,6 @@ vec replace_cpp(vec const& x, vec const& y){
     output(find(x==i+1)).fill(y(i));
   }
   return output;
-}
-
-// replace function
-//[[Rcpp::export]]
-mat clean_mat(mat X){
-  X(find(X<1.0e-16)).fill(1.0e-16);
-  X(find(X>1.0e16)).fill(1.0e16);
-  return X;
 }
 
 //[[Rcpp::export]]
@@ -141,8 +137,9 @@ vec groupmean_cpp(vec const& x, vec const& groups, int const& n){
   return output;
 }
 
-
-
+// ---------------------------------------------------------------------- //
+// sampling functions
+// ---------------------------------------------------------------------- //
 
 // generate inverse-gamma random variables
 //[[Rcpp::export]]
@@ -225,6 +222,10 @@ vec drawbeta(mat const& Y, mat const& X, bool fast){
   return beta;
 }
 
+// ---------------------------------------------------------------------- //
+// MCMC functions
+// ---------------------------------------------------------------------- //
+
 //[[Rcpp::export]]
 List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool print){
   
@@ -251,7 +252,7 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
   // initialize
   int rep, mkeep;
   vec ytstar, phitilde, levelsums, diffsums, u, v, vari, w, sums, rate, scale;
-  mat Ystar, Xt, CtpCt, Lam, Xpy, XLamXp, Lamibetabar, irootX, irootXt, irootC, Ct, projmat, CIprojCp;
+  mat Ystar, Xt, CtpCt, Lam, Xpy, XtLamXtp, Lamibetabar, irootX, irootXt, irootC, Ct, projmat, CIprojCp;
   mat XpX = trans(X)*X;
   vec nphi = zeros(p);
   mat Cstar;
@@ -308,14 +309,18 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
       // precompute
       Xt = X/sqrt(sigmasq(i));
       Lam = diagmat(lamstar(span(p*i,p*i+p-1)));
-      XLamXp = X * Lam * trans(X);
+      XtLamXtp = Xt * Lam * trans(Xt);
 
       // phi (marginalizing over beta)
+      // first use Woodbury to rewrite inverse as (Xt'Xt + Lam^-1)^-1 = Lam - LamXt'(I + XtLamXt')^-1XtLam
+      // then projection matrix is can be written as:
+      // I - Xt(Xt'Xt + Lam^-1)^-1Xt' 
+      // = I - Xt(Lam - LamXt'(I + XtLamXt')^-1XtLam)Xt'
+      // = I - (XtLamXt' - XtLamXt'(I + XtLamXt')^-1XtLamXt'
       mat C = Clist[i];
       Ct = C/sqrt(sigmasq(i));
-      irootXt = solve(trimatu(chol(symmatu(XLamXp/sigmasq(i) + eye(n,n)))),eye(n,n));
-      projmat = eye(n,n) - Xt*(Lam - Lam*trans(Xt)*irootXt*trans(irootXt)*Xt*Lam)*trans(Xt);
-      projmat = clean_mat(projmat);
+      irootXt = solve(trimatu(chol(symmatu(XtLamXtp + eye(n,n)))),eye(n,n));
+      projmat = eye(n,n) - (XtLamXtp - XtLamXtp*irootXt*trans(irootXt)*XtLamXtp);
       irootC = solve(trimatu(chol(symmatu(trans(Ct)*projmat*Ct + Aphi(i,i)))), eye(nphi(i),nphi(i)));
       phitilde = (irootC*trans(irootC))*(trans(Ct)*projmat*Y.col(i)/sqrt(sigmasq(i)) + Aphi(i,i)*phibar(i));
       phi(span(cumnphi(i)-nphi(i),cumnphi(i)-1)) = phitilde + irootC*randn(nphi(i));
@@ -457,7 +462,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
   int rep, mkeep;
   vec ytstar, phitilde, Psi_Lmone, Psi_ellmone, Psi_ell, ellpone_sums, ellmone, denom, counts,
   levelsums, diffsums, v_kl, thetatilde, theta, mean, u, v, vari, w, sums, rate, scale, lambda, xilambda;
-  mat Ystar, Xt, CtpCt, Lam, Xpy, XLamXp, Lamibetabar, irootX, irootXt, irootC, Ct, projmat, CIprojCp;
+  mat Ystar, Xt, CtpCt, Lam, Xpy, XtLamXtp, Lamibetabar, irootX, irootXt, irootC, Ct, projmat, CIprojCp;
   mat XpX = trans(X)*X;
   vec nphi = zeros(p);
   mat Cstar;
@@ -603,6 +608,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
             sums = pow(as<vec>(thetalist[s])-mean,2.0)/(Psi_ellmone*tau(s));
             diffsums = groupsum_cpp(sums,replace_cpp(list[s],list[ell]),npar(ell));
             levelsums = levelsums + replace_cpp(list[ell],diffsums);
+            
           }
           
           lambda = ones(npar(ell));
@@ -612,7 +618,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
           if(group_shrinkage=="horseshoe" && rep>=initial_run){
             scale = 1.0/xilambda + 0.5*levelsums;
             lambda = randig(npar(ell),0.5+0.5*counts,scale);
-            scale = 1.0 + 1.0/lambda;
+            scale = 1 + 1.0/lambda;
             xilambda = randig(npar(ell),ones(npar(ell)),scale);
           }
           
@@ -639,14 +645,18 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
       // precompute
       Xt = X/sqrt(sigmasq(i));
       Lam = diagmat(lamstar(span(p*i,p*i+p-1)));
-      XLamXp = X * Lam * trans(X);
-
+      XtLamXtp = Xt*Lam*trans(Xt);
+      
       // phi (marginalizing over beta)
+      // first use Woodbury to rewrite inverse as (Xt'Xt + Lam^-1)^-1 = Lam - LamXt'(I + XtLamXt')^-1XtLam
+      // then projection matrix is can be written as:
+      // I - Xt(Xt'Xt + Lam^-1)^-1Xt' 
+      // = I - Xt(Lam - LamXt'(I + XtLamXt')^-1XtLam)Xt'
+      // = I - (XtLamXt' - XtLamXt'(I + XtLamXt')^-1XtLamXt'
       mat C = Clist[i];
       Ct = C/sqrt(sigmasq(i));
-      irootXt = solve(trimatu(chol(symmatu(XLamXp/sigmasq(i) + eye(n,n)))),eye(n,n));
-      projmat = eye(n,n) - Xt*(Lam - Lam*trans(Xt)*irootXt*trans(irootXt)*Xt*Lam)*trans(Xt);
-      projmat = clean_mat(projmat);
+      irootXt = solve(trimatu(chol(symmatu(XtLamXtp + eye(n,n)))),eye(n,n));
+      projmat = eye(n,n) - (XtLamXtp - XtLamXtp*irootXt*trans(irootXt)*XtLamXtp);
       irootC = solve(trimatu(chol(symmatu(trans(Ct)*projmat*Ct + Aphi(i,i)))), eye(nphi(i),nphi(i)));
       phitilde = (irootC*trans(irootC))*(trans(Ct)*projmat*Y.col(i)/sqrt(sigmasq(i)) + Aphi(i,i)*phibar(i));
       phi(span(cumnphi(i)-nphi(i),cumnphi(i)-1)) = phitilde + irootC*randn(nphi(i));

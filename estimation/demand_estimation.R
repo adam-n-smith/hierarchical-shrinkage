@@ -1,3 +1,4 @@
+library(tidyverse)
 library(Rcpp)
 library(RcppArmadillo)
 library(here)
@@ -53,6 +54,7 @@ for(i in 1:p){
   dispi = display[inweeks,2+i]
   
   # training
+  # C = matrix(1,nrow=n)
   C = cbind(matrix(1,nrow=n),as.matrix(seasonal[inweeks,]))
   if(any(feati!=0) & n_distinct(feati)>1){
     C = cbind(C,as.matrix(feati))
@@ -66,6 +68,7 @@ for(i in 1:p){
   Clist[[i]] = C
   
   # test
+  # C = matrix(1,nrow=ntest)
   C = cbind(matrix(1,nrow=ntest),as.matrix(seasonal[-inweeks,]))
   if(any(feati!=0) & n_distinct(feati)>1){
     C = cbind(C,as.matrix(feature[-inweeks,2+i]))
@@ -139,7 +142,7 @@ Prior = list(
 
 # mcmc
 Mcmc = list(
-  R = 100,
+  R = 1000,
   initial_run=0,
   keep = 1,
   burn_pct = 0.5
@@ -161,7 +164,7 @@ for(i in 1:npar[1]){
   plot(out_hierhorse$thetadraws[,i],type="l")
   abline(h=0)
 }
-matplot(out_hierhorse$thetadraws[,(cumsum(npar)[1]+2):cumsum(npar)[2]],type="l")
+matplot(out_hierhorse$thetadraws[,(cumsum(npar)[1]+1):cumsum(npar)[2]],type="l")
 
 # beta
 wchown = as.vector(diag(p)==1)
