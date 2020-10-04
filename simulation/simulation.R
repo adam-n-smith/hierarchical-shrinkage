@@ -10,7 +10,7 @@ sourceCpp(here("functions","shrinkage_mcmc.cpp"))
 
 # dimensions
 n = 50
-p = 50
+p = 100
 d = 1
 
 # tree
@@ -29,7 +29,7 @@ L = ncol(tree)
 
 # simulate data
 set.seed(1)
-data = simdata_tree(n,p,d,tree,childrencounts,list,npar,c(0,0,0.95))
+data = simdata_tree(n,p,d,tree,childrencounts,list,npar,c(0,0.95,0.95))
 data$npar = npar
 data$tree = tree
 data$list = list
