@@ -32,17 +32,12 @@ simdata_tree = function(n,p,d,tree,counts,list,npar,prop_sparse){
     mean = theta[list[[ell]]]
     
     # draw local variances for current level
-    # lambda = runif(npar[ell])
-    # lambda = 1/rgamma(npar[ell],10,10)
     lambda = rep(1,npar[ell])
-
+    
     # construct theta for current level
     thetasd = sqrt(lambda*Psi*tau[ell])
-    theta = mean + thetasd*rnorm(npar[ell])
-    if(ell==L){
-      theta = mean + rbinom(npar[ell],1,1-prop_sparse)*thetasd*rnorm(npar[ell])
-    }
-
+    theta = mean + rbinom(npar[ell],1,1-prop_sparse[ell])*thetasd*rnorm(npar[ell])
+    
     # save
     thetalist[[ell]] = theta
     lambdalist[[ell]] = lambda
@@ -74,7 +69,7 @@ simdata_tree = function(n,p,d,tree,counts,list,npar,prop_sparse){
   # training data
   X = matrix(rnorm(n*p),n,p)
   error = matrix(rnorm(n*p),n,p)%*%chol(Sigma)
-  Y = X%*%B + Cphi + error
+  Y = X%*%B + error
   
   # errors at product level
   E = matrix(NA,p,p)
@@ -156,9 +151,6 @@ simdata_batch = function(pvec,nrep,prior,prop_sparse){
     tree_dgp = matrix(c(rep(1:5,each=p/5),
                         rep(1:10,each=p/10),
                         1:p),nrow=p,ncol=3)
-    # tree_dgp = matrix(c(rep(1:2,each=p/2),
-    #                     rep(1:4,each=p/4),
-    #                     1:p),nrow=p,ncol=3)
     childrencounts_dgp = countchildren_cpp(tree_dgp)
     treeindex_dgp = createindex(tree_dgp)
     list_dgp = treeindex_dgp$list
@@ -223,56 +215,74 @@ simdata_batch = function(pvec,nrep,prior,prop_sparse){
 }
 
 # fit models on batch data in parallel
-fit_parallel = function(simdata,Mcmc,p_vec,shrinkage,model,dgp){
+fit_parallel = function(simdata,Mcmc,p_vec,models,dgp){
   
   
   nrep = length(simdata[[1]])
   end = Mcmc$R/Mcmc$keep
   burn = Mcmc$burn_pct*end
-
+  
   itime = proc.time()[3]
   out = foreach(j=1:length(p_vec), .combine='cbind') %:% 
     foreach(b=1:nrep, .combine='rbind') %:% 
-    foreach(m=shrinkage, .combine='rbind', 
+    foreach(m=1:nrow(models), .combine='rbind', 
             .packages=c("Rcpp","RcppArmadillo","here"),
             .options.snow=opts) %dopar% { 
-      
-      sourceCpp(here("functions","shrinkage_mcmc.cpp"))
-      
-      data = simdata[[j]][[b]]
-      p = p_vec[j]
-      
-      # priors
-      Prior = list(thetabar=0, taubar=1, betabarii=0, taubarii=10,
-                   Aphi=.01*diag(p), phibar=double(p), a=5, b=5)
-      
-      # fit model
-      if(model=="tree_true"){
-        Data = list(Y=data$Y, X=data$X, Clist=data$Clist, tree=data$tree,
-                    childrencounts=data$childrencounts, list=data$list, npar=data$npar)
-        fit = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage=m,group_shrinkage="ridge",print=FALSE)
-      }
-      if(model=="tree_not"){
-        Data = list(Y=data$Y, X=data$X, Clist=data$Clist, tree=data$tree_not,
-                    childrencounts=data$childrencounts_not, list=data$list_not, npar=data$npar_not)
-        fit = rSURhiershrinkage(Data,Prior,Mcmc,product_shrinkage=m,group_shrinkage="ridge",print=FALSE)
-      }
-      if(model=="sparse"){
-        Data = list(Y=data$Y, X=data$X, Clist=data$Clist, tree=data$tree)
-        fit = rSURshrinkage(Data,Prior,Mcmc,shrinkage=m,print=FALSE)
-      }
-      
-      # compute rmse
-      Brmse = double(end-burn)
-      for(r in 1:(end-burn)){
-        B = matrix(fit$betadraws[burn+r,],p,p)
-        Brmse[r] = sqrt(mean((data$B[diag(p)!=1] - B[diag(p)!=1])^2))
-      }
-      
-      # save 
-      mean(Brmse)
-      
-    }
+              
+              sourceCpp(here("functions","shrinkage_mcmc.cpp"))
+              
+              data = simdata[[j]][[b]]
+              p = p_vec[j]
+              
+              # priors
+              Prior = list(
+                thetabar=0, 
+                taubar=1, 
+                betabarii=0, 
+                taubarii=10,
+                Aphi=.01*diag(p), 
+                phibar=double(p), 
+                a=5, 
+                b=5
+              )
+              
+              # fit model
+              if(models[m,2]=="sparse"){
+                Data = list(
+                  Y=data$Y, 
+                  X=data$X, 
+                  Clist=data$Clist, 
+                  tree=data$tree
+                )
+                fit = rSURshrinkage(Data,Prior,Mcmc,Shrinkage=models[m,1],print=FALSE)
+              }
+              else{
+                Data = list(
+                  Y=data$Y, 
+                  X=data$X, 
+                  Clist=data$Clist, 
+                  tree=data$tree,
+                  childrencounts=data$childrencounts, 
+                  list=data$list, 
+                  npar=data$npar
+                )
+                fit = rSURhiershrinkage(Data,Prior,Mcmc,
+                                        Shrinkage=list(product=models[m,1],
+                                                       group=models[m,2]),
+                                        print=FALSE)
+              }
+
+              # compute rmse
+              Brmse = double(end-burn)
+              for(r in 1:(end-burn)){
+                B = matrix(fit$betadraws[burn+r,],p,p)
+                Brmse[r] = sqrt(mean((data$B[diag(p)!=1] - B[diag(p)!=1])^2))
+              }
+              
+              # save 
+              mean(Brmse)
+              
+            }
   
   colnames(out) = paste0("p_",p_vec,"_",dgp)
   

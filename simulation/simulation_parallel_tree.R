@@ -5,6 +5,7 @@ library(here)
 library(doSNOW)
 
 source(here("functions","simulation_functions.R"))
+source(here("functions","shrinkage_functions.R"))
 sourceCpp(here("functions","shrinkage_mcmc.cpp"))
 
 n = 50

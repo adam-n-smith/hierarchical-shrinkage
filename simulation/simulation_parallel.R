@@ -6,23 +6,19 @@ library(here)
 library(xtable)
 library(snakecase)
 
-# 30 minutes for p=100, nrep=2, R=1000
-# 50 minutes for p=100, nrep=4, R=1000
-
 source(here("functions","simulation_functions.R"))
+source(here("functions","shrinkage_functions.R"))
 sourceCpp(here("functions","shrinkage_mcmc.cpp"))
 
 n = 50
-p_vec = c(50,100)
-nrep = 25
-# p_vec = 100
-# nrep = 10
+# p_vec = c(50,100)
+# nrep = 25
+p_vec = c(50,60)
+nrep = 2
 
-# shrinkage = c("ridge","lasso","horseshoe")
-shrinkage = c("ridge","horseshoe")
 Mcmc = list(
-  R = 2000,
-  initial_run=100,
+  R = 200,
+  initial_run=0,
   keep = 1,
   burn_pct = 0.5
 )
@@ -33,9 +29,15 @@ Mcmc = list(
 # ------------------------------------------------------------- #
 
 set.seed(1)
-simdata_densetree = simdata_batch(p_vec,nrep,"tree",prop_sparse=0)
-simdata_sparsetree = simdata_batch(p_vec,nrep,"tree",prop_sparse=0.95)
-simdata_sparse = simdata_batch(p_vec,nrep,"sparse",prop_sparse=0.95)
+# simdata_densetree = simdata_batch(p_vec,nrep,"tree",prop_sparse=0)
+# simdata_sparsetree = simdata_batch(p_vec,nrep,"tree",prop_sparse=0.95)
+# simdata_sparse = simdata_batch(p_vec,nrep,"sparse",prop_sparse=0.95)
+data_dense_dense = simdata_batch(p_vec,nrep,"tree",prop_sparse=c(0,0,0))
+data_sparse_dense = simdata_batch(p_vec,nrep,"tree",prop_sparse=c(0,0.95,0))
+data_dense_sparse = simdata_batch(p_vec,nrep,"tree",prop_sparse=c(0,0,0.95))
+data_sparse_sparse = simdata_batch(p_vec,nrep,"tree",prop_sparse=c(0,0.95,0.95))
+data_sparse = simdata_batch(p_vec,nrep,"sparse",prop_sparse=0.95)
+
 
 # ------------------------------------------------------------- #
 # fit models
@@ -46,34 +48,36 @@ out = vector(mode="list",length=3)
 names(out) = c("sparse","tree_true","tree_not")
 
 # initialize clusters
-cl = makeSOCKcluster(3)
+cl = makeSOCKcluster(2)
 registerDoSNOW(cl)
 pb = txtProgressBar(max=nrep, style=3)
 progress = function(n) setTxtProgressBar(pb, n)
 opts = list(progress=progress)
 
+# data generating processes
+dgps = c("dense_dense",
+         "sparse_dense",
+         "dense_sparse",
+         "sparse_sparse",
+         "sparse")
 
-# DGP: dense tree
-models = c("sparse","tree_true","tree_not")
-for(i in 1:length(models)){
-  print(models[i])
-  out[[i]] = fit_parallel(simdata_densetree,Mcmc,p_vec,shrinkage,model=models[i],dgp="densetree")
-}
+# models to fit
+models = matrix(c("ridge","sparse",
+                  "lasso","sparse",
+                  "horseshoe","sparse",
+                  "ridge","ridge",
+                  "lasso","ridge",
+                  "horseshoe","ridge",
+                  "ridge","horseshoe",
+                  "lasso","horseshoe",
+                  "horseshoe","horseshoe"),
+                ncol=2,byrow=TRUE)
 
-# DGP: sparse tree
-models = c("sparse","tree_true","tree_not")
-for(i in 1:length(models)){
-  print(models[i])
-  tmp = fit_parallel(simdata_sparsetree,Mcmc,p_vec,shrinkage,model=models[i],dgp="sparsetree")
-  out[[i]] = cbind(out[[i]],99,tmp)
-}
-
-# DGP: sparse
-models = c("sparse","tree_true")
-for(i in 1:length(models)){
-  print(models[i])
-  tmp = fit_parallel(simdata_sparse,Mcmc,p_vec,shrinkage,model=models[i],dgp="sparse")
-  out[[i]] = cbind(out[[i]],99,tmp)
+# fit models across all dgps
+fit = NULL
+for(i in 1:length(dgps)){
+  fit = cbind(fit,fit_parallel(data_dense_dense,Mcmc,p_vec,models,dgp=dgps[i]))
+  print(dgps[i])
 }
 
 # stop

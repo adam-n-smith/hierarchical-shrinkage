@@ -29,7 +29,7 @@ L = ncol(tree)
 
 # simulate data
 set.seed(1)
-data = simdata_tree(n,p,d,tree,childrencounts,list,npar,0.95)
+data = simdata_tree(n,p,d,tree,childrencounts,list,npar,c(0,0,0.95))
 data$npar = npar
 data$tree = tree
 data$list = list
