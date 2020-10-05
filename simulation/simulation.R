@@ -74,20 +74,24 @@ Prior = list(
 
 # mcmc
 Mcmc = list(
-  R = 500,
+  R = 5000,
   initial_run=100,
-  keep = 1,
+  keep = 5,
   burn_pct = 0.5
 )
 
 sourceCpp(here("functions","shrinkage_mcmc.cpp"))
+
 out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="ridge",group="ridge"),print=TRUE)
-out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="lasso",group="ridge"),print=TRUE)
+out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="lasso",group="ridge"),print=FALSE)
 out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="horseshoe",group="ridge"),print=TRUE)
 
 out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="ridge",group="horseshoe"),print=TRUE)
 out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="lasso",group="horseshoe"),print=TRUE)
 out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="horseshoe",group="horseshoe"),print=TRUE)
+
+hist(out$lambdadraws)
+matplot(out$lambdadraws,type="l")
 
 end = Mcmc$R/Mcmc$keep
 burn = Mcmc$burn_pct*end

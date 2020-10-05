@@ -151,10 +151,9 @@ vec randig(int const& n, vec const& shape, vec const& scale){
     output(i) = 1/R::rgamma(as_scalar(shape(i)),1/as_scalar(scale(i)));
   }
   
-  // replace small/large values
-  output(find(output<1.0e-16)).fill(1.0e-16);
-  output(find(output>1.0e16)).fill(1.0e16);
-  
+  // bound small values to prevent numerical overflow issues
+  output(find(output<1.0e-12)).fill(1.0e-12);
+
   return output;
 }
 
@@ -164,8 +163,8 @@ vec randinvgaussian(int const& n, vec const& mu, double const& lambda){
   vec nu = randn(n);
   vec y = pow(nu,2.0);
   vec musq = pow(mu,2.0);
-  vec output = mu + musq%y/2/lambda - mu/2/lambda%sqrt(4*lambda*mu%y + musq%pow(y,2.0));
-  output(find(output<1.0e-16)).fill(1.0e-16);
+  vec output = mu + musq%y/2.0/lambda - mu/2.0/lambda%sqrt(4.0*lambda*mu%y + musq%pow(y,2.0));
+  output(find(output<1.0e-12)).fill(1.0e-12);
   uvec wch = find(randu(n) > mu/(mu+output));
   output(wch) = musq(wch)/output(wch);
   return output;
@@ -693,9 +692,17 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
     
     // lasso: Exp(1/2)=Gamma(1,1/2)
     if(product_shrinkage=="lasso" && rep>=initial_run){
-      vec mutilde = pow(2.0*Psi_Lmone*tau(L-1)/pow(beta(wchcross)-betabar(wchcross),2.0),0.5);
+      // vec mutilde = pow(2.0*Psi_Lmone*tau(L-1)/pow(beta(wchcross)-betabar(wchcross),2.0),0.5);
+      vec mutilde = sqrt(2.0)*sqrt(Psi_Lmone)*sqrt(tau(L-1))/abs(beta(wchcross)-betabar(wchcross));
       lambda = 1/randinvgaussian(npar(L-1),mutilde,2); 
       lambdalist[L-1] = lambda;
+      
+      // double max_mu = max(mutilde);
+      // double max_Psi = max(Psi_Lmone);
+      // double max_tau = max(tau);
+      // double max_beta = min(pow(beta(wchcross)-betabar(wchcross),2.0));
+      // Rcout << max_mu << " - " << max_Psi << " - " << max_tau << " - " << max_beta << "\n ";
+    
     }
     
     // horseshoe: C+(0,1)
