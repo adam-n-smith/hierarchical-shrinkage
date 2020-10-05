@@ -70,20 +70,6 @@ models = matrix(c("ridge","sparse",
                   "lasso","horseshoe",
                   "horseshoe","horseshoe"),
                 ncol=2,byrow=TRUE)
-# models = matrix(c("ridge","sparse",
-#                   "lasso","sparse",
-#                   "horseshoe","sparse"),
-#                 ncol=2,byrow=TRUE)
-# models = matrix(c("ridge","ridge",
-#                   "lasso","ridge",
-#                   "horseshoe","ridge"),
-#                 ncol=2,byrow=TRUE)
-# models = matrix(c("ridge","horseshoe",
-#                   "lasso","horseshoe",
-#                   "horseshoe","horseshoe"),
-#                 ncol=2,byrow=TRUE)
-# models = matrix(c("horseshoe","horseshoe"),
-#                 ncol=2,byrow=TRUE)
 
 # fit models across all dgps
 fit = NULL
