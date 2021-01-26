@@ -20,9 +20,10 @@ p = nrow(tree)
 # split data into training/test
 # --------------------------------------------------------- #
 
-set.seed(999)
+set.seed(1)
 nweeks = nrow(demand)
 inweeks = sample(1:nweeks,80)
+# inweeks = which(demand$WEEK<unique(demand$WEEK)[41])
 
 Y = demand %>%
   slice(inweeks) %>%
@@ -106,12 +107,12 @@ Prior = list(
 
 # mcmc
 Mcmc = list(
-  R = 500,
+  R = 1000,
   keep = 1
 )
 
 out_ridge = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="ridge",print=TRUE)
-out_lasso = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="lasso",print=TRUE)
+# out_lasso = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="lasso",print=TRUE)
 out_horse = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="horseshoe",print=TRUE)
 
 # --------------------------------------------------------- #
@@ -143,20 +144,18 @@ Prior = list(
 # mcmc
 Mcmc = list(
   R = 1000,
-  initial_run=0,
+  initial_run = 100,
   keep = 1,
   burn_pct = 0.5
 )
 
-sourceCpp(here("functions","shrinkage_mcmc.cpp"))
-
 out_hierridge = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="ridge",group="ridge"),print=TRUE)
-out_hierlasso = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="lasso",group="ridge"),print=TRUE)
+# out_hierlasso = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="lasso",group="ridge"),print=TRUE)
 out_hierhorse = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="horseshoe",group="ridge"),print=TRUE)
 
-out_hierridge = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="ridge",group="horseshoe"),print=TRUE)
-out_hierlasso = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="lasso",group="horseshoe"),print=TRUE)
-out_hierhorse = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="horseshoe",group="horseshoe"),print=TRUE)
+out_hierhorseridge = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="ridge",group="horseshoe"),print=TRUE)
+out_hierhorselasso = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="lasso",group="horseshoe"),print=TRUE)
+out_hierhorsehorse = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="horseshoe",group="horseshoe"),print=TRUE)
 
 # thetas
 matplot(out_hierhorse$thetadraws[,1:npar[1]],type="l",col=1:npar[1])

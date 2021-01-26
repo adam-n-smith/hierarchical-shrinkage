@@ -1,4 +1,5 @@
 library(tidyverse)
+library(fastDummies)
 
 load("build/output/IRI_category_data.RData")
 
@@ -83,13 +84,13 @@ product_table = data_store %>%
   # remove missing
   filter(n_weeks == length(weeks)) %>%
   filter(price_levels > 1) %>%
-  filter(price_change > 0.1) %>%
+  # filter(price_change > 0.05) %>%
   filter(n_stores==length(stores)) %>%
   # ranking
   left_join(cat_weight_table,by=c("LARGE_CATEGORY","SMALL_CATEGORY")) %>%
   group_by(LARGE_CATEGORY,SMALL_CATEGORY) %>%
   mutate(RANK=rank(-revenue)) %>%
-  filter(RANK<=2*N) %>%
+  filter(RANK<=3*N) %>%
   # create product IDs
   group_by_at(prod_def) %>%
   mutate(PRODUCT = cur_group_id()) %>%
@@ -150,11 +151,16 @@ panel = data_store %>%
   # normalize weights
   mutate(WT = WT/sum(WT)) %>%
   # compute weighted average of marketing variables
-  summarise(PRICE = sum(WT*PRICE/(VOL_EQ*CAT_SIZE)),
-            UNITS = sum(UNITS*VOL_EQ*CAT_SIZE),
+  summarise(PRICE = sum(WT*PRICE/VOL_EQ),
+            UNITS = sum(UNITS*VOL_EQ),
             FEATURE = sum(WT*FEATURE),
             DISPLAY = sum(WT*DISPLAY),
             UPCs = list(UPC), .groups="drop")
+  # summarise(PRICE = sum(WT*PRICE/(VOL_EQ*CAT_SIZE)),
+  #           UNITS = sum(UNITS*VOL_EQ*CAT_SIZE),
+  #           FEATURE = sum(WT*FEATURE),
+  #           DISPLAY = sum(WT*DISPLAY),
+  #           UPCs = list(UPC), .groups="drop")
 
 # ----------------------------------------------- #
 # construct price, demand, and promotion tables
@@ -166,6 +172,7 @@ prices = panel %>%
   mutate(PRICE=log(PRICE)) %>%
   select(IRI_KEY,PRODUCT,WEEK,PRICE) %>%
   pivot_wider(names_from=PRODUCT,values_from=PRICE,names_prefix="PRICE_")
+# check UNITS ###################################
 demand = panel %>%
   inner_join(product_table[,c("PRODUCT",prod_def)], by = c("LARGE_CATEGORY", "SMALL_CATEGORY", "BRAND")) %>%
   mutate(UNITS = ifelse(UNITS==0,log(0.1),log(UNITS))) %>%

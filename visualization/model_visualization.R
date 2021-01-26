@@ -5,13 +5,13 @@ library(tidyverse)
 # --------------------------------------------------------- #
 
 # means
-betahat.hier = apply(out.hierridge$betadraw[burn:end,],2,mean)
-betahat = apply(out.ridge$betadraw[burn:end,],2,mean)
+betahat.hier = apply(out_hierridge$betadraw[burn:end,],2,mean)
+betahat = apply(out_ridge$betadraw[burn:end,],2,mean)
 # sd
-betasd.hier = apply(out.hierridge$betadraw[burn:end,],2,sd)
-betasd = apply(out.ridge$betadraw[burn:end,],2,sd)
-betasd = apply(out.lasso$betadraw[burn:end,],2,sd)
-betasd = apply(out.horseshoe$betadraw[burn:end,],2,sd)
+betasd.hier = apply(out_hierridge$betadraw[burn:end,],2,sd)
+betasd = apply(out_ridge$betadraw[burn:end,],2,sd)
+betasd = apply(out_lasso$betadraw[burn:end,],2,sd)
+betasd = apply(out_horseshoe$betadraw[burn:end,],2,sd)
 
 # compare betas
 wchown = which(diag(p)==1)
@@ -57,11 +57,11 @@ hist(mrkup.horse - mrkup.hierhorse,xlim=c(-4,4),breaks=1000)
 
 library(gridExtra)
 wchcross = as.vector(diag(p)==0)
-df = data.frame(ridge=apply(out.ridge$betadraw[burn:end,],2,mean),
-                lasso=apply(out.lasso$betadraw[burn:end,],2,mean),
-                horseshoe=apply(out.horse$betadraw[burn:end,],2,mean),
-                hierridge=apply(out.hierridge$betadraw[burn:end,],2,mean),
-                hierhorse=apply(out.hierhorse$betadraw[burn:end,],2,mean),
+df = data.frame(ridge=apply(out_ridge$betadraw[burn:end,],2,mean),
+                # lasso=apply(out_lasso$betadraw[burn:end,],2,mean),
+                horseshoe=apply(out_horse$betadraw[burn:end,],2,mean),
+                hierridge=apply(out_hierridge$betadraw[burn:end,],2,mean),
+                hierhorse=apply(out_hierhorse$betadraw[burn:end,],2,mean),
                 cross = ifelse(wchcross,"cross elasticity","own elasticity"))
 labels = c(ridge = "ridge", lasso = "lasso",horseshoe = "horseshoe",
            hierridge = "hierarchical ridge",hierhorse = "hierarchical horseshoe")
@@ -94,9 +94,10 @@ b = df %>%
   labs(x="",y="density\n",title="Cross-Price Elasticities") +
   theme_minimal() + 
   theme(plot.title = element_text(hjust=0.5))
-ggsave(file="figures/beta_histogram.png",
-       grid.arrange(a,b),
-       width = 11, height = 5)
+grid.arrange(a,b)
+# ggsave(file="figures/beta_histogram.png",
+#        grid.arrange(a,b),
+#        width = 11, height = 5)
 df %>%
   pivot_longer(.,-cross,names_to="model") %>%
   mutate(model=factor(model,levels=c("ridge","lasso","horseshoe","hierridge","hierhorse")),
@@ -110,10 +111,10 @@ df %>%
 # --------------------------------------------------------- #
 
 wchcross = as.vector(which(diag(p)==0))
-df = data.frame(beta.ridge=apply(out.ridge$betadraw[burn:end,wchcross],2,sd),
-                beta.lasso=apply(out.lasso$betadraw[burn:end,wchcross],2,sd),
-                beta.horse=apply(out.horse$betadraw[burn:end,wchcross],2,sd),
-                beta.hierridge=apply(out.hierridge$betadraw[burn:end,wchcross],2,sd))
+df = data.frame(beta.ridge=apply(out_ridge$betadraw[burn:end,wchcross],2,sd),
+                beta.lasso=apply(out_lasso$betadraw[burn:end,wchcross],2,sd),
+                beta.horse=apply(out_horse$betadraw[burn:end,wchcross],2,sd),
+                beta.hierridge=apply(out_hierridge$betadraw[burn:end,wchcross],2,sd))
 a = ggplot(df,aes(x=beta.ridge,y=beta.hierridge)) + 
   geom_point(size=1, color="grey") + 
   geom_abline(intercept=0,slope=1) + 
@@ -140,10 +141,10 @@ ggsave(file="figures/beta_sd.png",
 # thetas
 # --------------------------------------------------------- #
 
-# # thetahat1 = apply(out.hierhorse$thetadraw[burn:end,1:npar[1]],2,mean)
-# # thetahat2 = apply(out.hierhorse$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,mean)
-# thetahat1 = apply(out.hierridge$thetadraw[burn:end,1:npar[1]],2,mean)
-# thetahat2 = apply(out.hierridge$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,mean)
+# # thetahat1 = apply(out_hierhorse$thetadraw[burn:end,1:npar[1]],2,mean)
+# # thetahat2 = apply(out_hierhorse$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,mean)
+# thetahat1 = apply(out_hierridge$thetadraw[burn:end,1:npar[1]],2,mean)
+# thetahat2 = apply(out_hierridge$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,mean)
 # level = rep(c("top (categories)","middle (subcategories)"),npar[1:2])
 # level = factor(level,levels=c("top (categories)","middle (subcategories)"))
 # own = ifelse(c(as.vector(diag(10)==1),as.vector(diag(36)==1)),"within","across")
@@ -164,11 +165,11 @@ ggsave(file="figures/beta_sd.png",
 # thetas
 # --------------------------------------------------------- #
 
-df = data.frame(theta = round(apply(out.hierridge$thetadraw[burn:end,1:npar[1]],2,mean),3),
-                SD = round(apply(out.hierridge$thetadraw[burn:end,1:npar[1]],2,sd),3),
-                i = rep(unique(product_table$LARGE_CATEGORY),10),
-                j = rep(unique(product_table$LARGE_CATEGORY),each=10)) %>%
-  mutate(beer = (j=="CATEGORY - BEER/ALE/ALCOHOLIC CID"))
+df = data.frame(theta = round(apply(out_hierridge$thetadraw[burn:end,1:npar[1]],2,mean),3),
+                SD = round(apply(out_hierridge$thetadraw[burn:end,1:npar[1]],2,sd),3),
+                i = rep(unique(product_table$LARGE_CATEGORY),n_distinct(product_table$LARGE_CATEGORY)),
+                j = rep(unique(product_table$LARGE_CATEGORY),each=n_distinct(product_table$LARGE_CATEGORY))) %>%
+  mutate(beer = (j=="BEER/ALE/ALCOHOLIC CID"))
 ggplot(df,aes(x=theta,group=j)) + 
   geom_density(color="grey") + 
   geom_density(data=df[df$beer,],aes(x=theta),color="#F8766D",size=1.2) + 
@@ -176,12 +177,12 @@ ggplot(df,aes(x=theta,group=j)) +
   theme_minimal() +
   theme(legend.position="none",
         plot.title = element_text(hjust=0.5))
-dev.copy2pdf(file="figures/thetas_beer.pdf",width=4,height=3)
+# dev.copy2pdf(file="figures/thetas_beer.pdf",width=4,height=3)
 
-df = data.frame(theta = apply(out.hierridge$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,mean),
-                SD = round(apply(out.hierridge$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,sd),3),
-                i = rep(unique(product_table$SMALL_CATEGORY),36),
-                j = rep(unique(product_table$SMALL_CATEGORY),each=36)) %>%
+df = data.frame(theta = apply(out_hierridge$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,mean),
+                SD = round(apply(out_hierridge$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,sd),3),
+                i = rep(unique(product_table$SMALL_CATEGORY),n_distinct(product_table$SMALL_CATEGORY)),
+                j = rep(unique(product_table$SMALL_CATEGORY),each=n_distinct(product_table$SMALL_CATEGORY))) %>%
   left_join(.,unique(product_table[,c("SMALL_CATEGORY","LARGE_CATEGORY")]),by=c("j"="SMALL_CATEGORY")) %>%
   mutate(imported = (j=="IMPORTED BEER/ALE (INC NON-ALCOH"),
          domestic = (j=="DOMESTIC BEER/ALE (INC NON-ALCOH"))
@@ -193,4 +194,4 @@ ggplot(df,aes(x=theta,group=j)) +
   theme_minimal() +
   theme(legend.position="none",
         plot.title = element_text(hjust=0.5))
-dev.copy2pdf(file="figures/thetas_beer_imported.pdf",width=4,height=3)
+# dev.copy2pdf(file="figures/thetas_beer_imported.pdf",width=4,height=3)

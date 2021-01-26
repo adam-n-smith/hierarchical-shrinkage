@@ -152,7 +152,7 @@ vec randig(int const& n, vec const& shape, vec const& scale){
   }
   
   // bound small values to prevent numerical overflow issues
-  output(find(output<1.0e-12)).fill(1.0e-12);
+  output(find(output<1.0e-8)).fill(1.0e-8);
 
   return output;
 }
@@ -164,7 +164,7 @@ vec randinvgaussian(int const& n, vec const& mu, double const& lambda){
   vec y = pow(nu,2.0);
   vec musq = pow(mu,2.0);
   vec output = mu + musq%y/2.0/lambda - mu/2.0/lambda%sqrt(4.0*lambda*mu%y + musq%pow(y,2.0));
-  output(find(output<1.0e-12)).fill(1.0e-12);
+  output(find(output<1.0e-8)).fill(1.0e-8);
   uvec wch = find(randu(n) > mu/(mu+output));
   output(wch) = musq(wch)/output(wch);
   return output;

@@ -31,7 +31,7 @@ createindex = function(tree){
         
         # match current positions with last positions
         index = matrix(subtree[indexpair,i-1],ncol=2)
-        match = apply(index,1,function(x)row.match(x,indexpairlast))
+        match = apply(index,1,function(x)row.match(x,data.frame(indexpairlast)))
         out[[i]] = match
       }
       
@@ -46,7 +46,7 @@ createindex = function(tree){
         
         # match current positions with last positions
         index = matrix(subtree[indexpair,i-1],ncol=2)
-        match = apply(index,1,function(x)row.match(x,indexpairlast))
+        match = apply(index,1,function(x)row.match(x,data.frame(indexpairlast)))
         
         # ignore own elasticities
         own = apply(indexpair,1,function(x)x[1]==x[2])
