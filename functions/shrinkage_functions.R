@@ -73,6 +73,13 @@ createindex = function(tree){
     npar = c(npar[-1],ncol(index))
   }
   
-  return(list(list=out,index=index,npar=npar))
+  # list for own parameters
+  list_own = list(L)
+  list_own[[1]] = rep(1,max(tree[,1]))
+  for(l in 1:(L-1)){
+    list_own[[l+1]] = unique(tree[,1:(l+1)])[,l]
+  }
+  
+  return(list(list=out,list_own=list_own,npar=npar,npar_own=apply(tree,2,max),index=index))
   
 }
