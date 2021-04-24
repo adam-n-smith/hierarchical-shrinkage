@@ -12,8 +12,9 @@
 .Ruserdata
 
 # build files
-build/code/*
-build/output/*
+build/*
+
+# saved model objects
 empirical analysis/output/*
 
 # miscellaneous
