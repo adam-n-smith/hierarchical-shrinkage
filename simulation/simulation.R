@@ -4,7 +4,7 @@ library(RcppArmadillo)
 library(here)
 library(reshape2)
 
-source(here("simulation","simulation_functions.R"))
+source(here("functions","simulation_functions.R"))
 source(here("functions","shrinkage_functions.R"))
 sourceCpp(here("functions","shrinkage_mcmc.cpp"))
 
@@ -17,9 +17,6 @@ d = 1
 tree = matrix(c(rep(1:5,each=p/5),
                 rep(1:10,each=p/10),
                 1:p),nrow=p,ncol=3)
-# tree = matrix(c(rep(1:2,each=p/2),
-#                 rep(1:4,each=p/4),
-#                 1:p),nrow=p,ncol=3)
 childrencounts = countchildren_cpp(tree)
 treeindex = createindex(tree)
 index = treeindex$index

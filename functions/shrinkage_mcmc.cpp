@@ -182,7 +182,8 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
   mat X = Data["X"];
   double p = X.n_cols;
   double n = X.n_rows;
-  int npar = p*p;
+  // int npar = p*p;
+  int npar = p*p-p;
   List Clist = Data["Clist"];
   
   // prior
@@ -223,15 +224,18 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
   // lamstar(wchown).fill(taubarii);
   vec tau = ones(1);
   vec xitau = tau;
+  vec tauown = ones(1);
+  vec xitauown = tauown;
   vec lambda = ones(npar);
   vec xilambda = ones(npar);
   vec sigmasq = ones(p);
-
+  
   // storage matrices
   mat phidraws(Rep/keep,sum(nphi));
   mat betadraws(Rep/keep, p*p);
   mat lambdadraws(Rep/keep, npar);
   mat taudraws(Rep/keep, 1);
+  mat tauowndraws(Rep/keep, 1);
   mat sigmasqdraws(Rep/keep, p);
   
   // print progress banner
@@ -249,8 +253,9 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
     // phi, beta, sigmasq
     // -------------------------------------------------------------- //
     
-    // lamstar(wchcross) = lambda*as_scalar(tau);
-    lamstar = lambda*as_scalar(tau);
+    lamstar(wchcross) = lambda*as_scalar(tau);
+    lamstar(wchown) = ones(p)*as_scalar(tauown);
+    // lamstar = lambda*as_scalar(tau);
     
     for(int i=0;i<p;i++){
       
@@ -258,7 +263,7 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
       Xt = X/sqrt(sigmasq(i));
       Lam = diagmat(lamstar(span(p*i,p*i+p-1)));
       XtLamXtp = Xt * Lam * trans(Xt);
-
+      
       // phi (marginalizing over beta)
       // first use Woodbury to rewrite inverse as (Xt'Xt + Lam^-1)^-1 = Lam - LamXt'(I + XtLamXt')^-1XtLam
       // then projection matrix is can be written as:
@@ -291,11 +296,14 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
     }
     
     // tau ~ C+(0,1)//
-    // levelsums = sum(pow(beta(wchcross),2.0)/lambda);
-    // tau = 1/R::rgamma(0.5*(p*p-p+1), 1/as_scalar(1/xitau+0.5*levelsums));
-    levelsums = sum(pow(beta,2.0)/lambda);
-    tau = 1/R::rgamma(0.5*(p*p+1), 1/as_scalar(1/xitau+0.5*levelsums));
+    // cross elasticities
+    levelsums = sum(pow(beta(wchcross),2.0)/lambda);
+    tau = 1/R::rgamma(0.5*(p*p-p+1), 1/as_scalar(1/xitau+0.5*levelsums));
     xitau = 1/R::rgamma(1,as_scalar(1/(1+1/tau)));
+    // own elasticities
+    levelsums = sum(pow(beta(wchown),2.0));
+    tauown = 1/R::rgamma(0.5*(p+1), 1/as_scalar(1/xitauown+0.5*levelsums));
+    xitauown = 1/R::rgamma(1,as_scalar(1/(1+1/tauown)));
     
     // lambda 
     // ridge: keep fixed at one
@@ -304,14 +312,14 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
     }
     // lasso: Exp(1/2)=Gamma(1,1/2)
     if(Shrinkage=="lasso"){
-      // vec mutilde = pow(2*tau(0)/pow(beta(wchcross),2.0),0.5);
-      vec mutilde = pow(2*tau(0)/pow(beta,2.0),0.5);
+      vec mutilde = pow(2*tau(0)/pow(beta(wchcross),2.0),0.5);
+      // vec mutilde = pow(2*tau(0)/pow(beta,2.0),0.5);
       lambda = 1/randinvgaussian(npar,mutilde,2); 
     }
     // horseshoe: C+(0,1)
     if(Shrinkage=="horseshoe"){
-      // scale = 1/xilambda + 0.5*pow(beta(wchcross),2.0)/as_scalar(tau);
-      scale = 1/xilambda + 0.5*pow(beta,2.0)/as_scalar(tau);
+      scale = 1/xilambda + 0.5*pow(beta(wchcross),2.0)/as_scalar(tau);
+      // scale = 1/xilambda + 0.5*pow(beta,2.0)/as_scalar(tau);
       lambda = randig(npar,ones(npar),scale);
       scale = 1+1/lambda;
       xilambda = randig(npar,ones(npar),scale);
@@ -354,6 +362,7 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
       betadraws(mkeep-1,span::all) = trans(beta);
       lambdadraws(mkeep-1,span::all) = trans(lambda);
       taudraws(mkeep-1,span::all) = tau;
+      tauowndraws(mkeep-1,span::all) = tauown;
       sigmasqdraws(mkeep-1,span::all) = trans(sigmasq);
       phidraws(mkeep-1,span::all) = trans(phi);
     }
@@ -374,34 +383,27 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
     Named("betadraws") = betadraws,
     Named("lambdadraws") = lambdadraws,
     Named("taudraws") = taudraws,
+    Named("tauowndraws") = tauowndraws,
     Named("sigmasqdraws") = sigmasqdraws,
     Named("phidraws") = phidraws
   );
   
 }
 
-// // including hierarchical prior on own elasticities + noncentered parameterization
+
 // //[[Rcpp::export]]
-// List rSURhiershrinkage_nc(List const& Data, List const& Prior, List const& Mcmc, List const& Shrinkage, bool print){
+// List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool print){
 //   
 //   // data
 //   mat Y = Data["Y"];
 //   mat X = Data["X"];
 //   double p = X.n_cols;
 //   double n = X.n_rows;
+//   int npar = p*p;
 //   List Clist = Data["Clist"];
-//   vec npar = Data["npar"];
-//   vec npar_own = Data["npar_own"];
-//   mat tree = Data["tree"];
-//   List childrencounts = Data["childrencounts"];
-//   List list = Data["list"];
-//   List list_own = Data["list_own"];
-//   int L = tree.n_cols;
-//   List Pilist = Data["Pilist"];
 //   
 //   // prior
-//   double thetabar_cross = Prior["thetabar_cross"];
-//   double thetabar_own = Prior["thetabar_own"];
+//   // double betabarii = Prior["betabarii"];
 //   // double taubarii = Prior["taubarii"];
 //   mat Aphi = Prior["Aphi"];
 //   vec phibar = Prior["phibar"];
@@ -410,19 +412,11 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
 //   
 //   // mcmc
 //   int Rep = Mcmc["R"];
-//   int initial_run = Mcmc["initial_run"];
-//   int RepRun = Rep + initial_run;
 //   int keep = Mcmc["keep"];
-//   
-//   // shrinkage
-//   std::string product_shrinkage = Shrinkage["product"];
-//   std::string group_shrinkage = Shrinkage["group"];
 //   
 //   // initialize
 //   int rep, mkeep;
-//   vec ytstar, phitilde, Psi_Lmone, Psi_ellmone, Psi_ell, ellpone_sums, ellmone, denom, counts,
-//   levelsums, diffsums, v_kl, thetatilde, theta, mean, u, v, vari, w, sums, rate, scale,
-//   lambda, xilambda, lambda_own, xilambda_own, mutilde;
+//   vec ytstar, phitilde, levelsums, diffsums, u, v, vari, w, sums, rate, scale;
 //   mat Ystar, Xt, CtpCt, Lam, Xpy, XtLamXtp, Lamibetabar, irootX, irootXt, irootC, Ct, projmat, CIprojCp;
 //   mat XpX = trans(X)*X;
 //   vec nphi = zeros(p);
@@ -439,190 +433,53 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
 //   vec phi = zeros(sum(nphi));
 //   uvec wchown = find(eye<mat>(p,p)==1);
 //   uvec wchcross = find(eye<mat>(p,p)==0);
-//   vec beta = vectorise(inv(trans(X)*X+0.1*eye(p,p))*trans(X)*Y);
-//   vec xi = zeros(p*p);
+//   vec beta = vectorise(inv(trans(X)*X+eye(p,p))*trans(X)*Y);
 //   vec betabar = zeros(p*p);
 //   vec lamstar = ones(p*p);
-//   // cross
-//   vec tau = ones(L);
+//   // betabar(wchown).fill(betabarii);
+//   // lamstar(wchown).fill(taubarii);
+//   vec tau = ones(1);
 //   vec xitau = tau;
-//   List lambdalist = List(L);
-//   List xilambdalist = List(L);
-//   List thetalist = List(L);
-//   // own
-//   vec tau_own = ones(L);
-//   vec xitau_own = tau_own;
-//   List lambdalist_own = List(L);
-//   List xilambdalist_own = List(L);
-//   List thetalist_own = List(L);
-//   //////////////////////
-//   mat B = zeros(p,p);
-//   mat Cphi = zeros(n,p);
-//   //////////////////////
-//   
-//   // thetalist[L-1] = vectorise(beta(wchcross));
-//   // thetalist_own[L-1] = vectorise(beta(wchown));
-//   thetalist[L-1] = zeros(npar[L-1]);
-//   thetalist_own[L-1] = zeros(npar_own[L-1]);
-//   for(int ell=L-1;ell>=0;ell--){
-//     if(ell<L-1){
-//       thetalist[ell] = zeros(npar(ell));
-//       thetalist_own[ell] = 10*ones(npar_own(ell));
-//     }
-//     lambdalist[ell] = ones(npar(ell));
-//     xilambdalist[ell] = ones(npar(ell));
-//     lambdalist_own[ell] = ones(npar_own(ell));
-//     xilambdalist_own[ell] = ones(npar_own(ell));
-//   }
+//   vec lambda = ones(npar);
+//   vec xilambda = ones(npar);
 //   vec sigmasq = ones(p);
-//   
+// 
 //   // storage matrices
 //   mat phidraws(Rep/keep,sum(nphi));
 //   mat betadraws(Rep/keep, p*p);
-//   mat thetadraws(Rep/keep,sum(npar));
-//   mat thetaowndraws(Rep/keep,sum(npar_own));
-//   mat lambdadraws(Rep/keep,sum(npar));
-//   mat taudraws(Rep/keep, L);
-//   mat tauowndraws(Rep/keep, L);
+//   mat lambdadraws(Rep/keep, npar);
+//   mat taudraws(Rep/keep, 1);
 //   mat sigmasqdraws(Rep/keep, p);
 //   
 //   // print progress banner
 //   wall_clock timer;
 //   timer.tic();
+//   Datetime dt;
 //   if(print){
-//     Rprintf(" MCMC Progress \n");
+//     Rprintf("MCMC Progress \n");
 //   }
 //   
-//   bool propagate = TRUE;
-//   // bool propagate = FALSE;
-//   
 //   // MCMC loop
-//   for (rep=0; rep<RepRun; rep++){
+//   for (rep=0; rep<Rep; rep++){
 //     
 //     // -------------------------------------------------------------- //
-//     // higher level
+//     // phi, beta, sigmasq
 //     // -------------------------------------------------------------- //
 //     
-//     for(int ell=0;ell<L-1;ell++){
-//       
-//       // vec thetabar = ones(npar(ell))*thetabar_cross;
-//       // if(ell>0) vec thetabar = replace_cpp(list[ell],thetalist[ell-1]);
-//       // 
-//       // mat Pi = Pilist[ell];
-//       // mat scalemat = trans(Pi)*ones(p,p)*Pi;
-//       // B.diag().fill(0);
-//       
-//       // mat Yell = Ystar*Pi;
-//       // mat Xell = X*Pi;
-//       // int pell = sqrt(npar(ell));
-//       // vec xiell = zeros(npar(ell));
-//       // vec theta = zeros(npar(ell));
-//       // 
-//       // // product of previous lambda parameters
-//       // Psi_ellmone = ones(npar[ell]);
-//       // if(propagate) Psi_ellmone = create_Psi_ellmone_cpp(lambdalist,childrencounts,list,npar,ell+1);
-//       // Psi_ell = replace_cpp(list[ell+1],Psi_ellmone) % replace_cpp(list[ell+1],lambdalist[ell]) * tau(ell);
-//       // 
-//       // mat XpX = trans(X)*X;
-//       // XpX = trans(Pi)*XpX*Pi;
-//       // 
-//       // for(int j=0;j<pell;j++){
-//       //   
-//       //   mat precision = XpX + diagmat(1/Psi_ell(span(pell*j,pell*j+pell-1)));
-//       //   mat xielltilde = inv(precision)*trans(Xell)*(Yell.col(j)/scalemat.col(j));
-//       // 
-//       //   // vec own = xi(wchown);
-//       //   // double pp = sum(Pi.col(j));
-//       //   // xielltilde(j) = xielltilde(j) - sum(own(span(pp*j,pp*j+pp-1)))/pp;
-//       //   
-//       //   // draw
-//       //   xiell(span(pell*j,pell*j+pell-1))  = xielltilde + chol(inv(precision),"lower") * randn<vec>(pell);
-//       //   theta(span(pell*j,pell*j+pell-1)) = thetabar(span(pell*j,pell*j+pell-1)) + xiell(span(pell*j,pell*j+pell-1));
-//       // }
-//       
-//       // // posterior variance
-//       // denom = as<vec>(lambdalist[ell+1]) % Psi_ell * tau(ell+1);
-//       // ellpone_sums = groupsum_cpp(1/denom,list[ell+1],npar(ell));
-//       // 
-//       // vec posterior_var = (1/as<vec>(lambdalist[ell+1]) * tau(ell+1)) + (1/as<vec>(lambdalist[ell]) * tau(ell));
-//       // 
-//       // // store draw
-//       // thetalist[ell] = vectorise(trans(Pi)*B*Pi / scalemat);
-// 
-//       
-//       
-//       // theta (cross effects) ---------------------------------------- //
-//       
-//       // product of previous lambda parameters
-//       Psi_ellmone = ones(npar[ell]); ////////////////////////////////////
-//       if(propagate) Psi_ellmone = create_Psi_ellmone_cpp(lambdalist,childrencounts,list,npar,ell+1);
-//       Psi_ell = replace_cpp(list[ell+1],Psi_ellmone) % replace_cpp(list[ell+1],lambdalist[ell]);
-//       
-//       // posterior variance
-//       denom = as<vec>(lambdalist[ell+1]) % Psi_ell * tau(ell+1);
-//       ellpone_sums = groupsum_cpp(1/denom,list[ell+1],npar(ell));
-//       if(ell>0){
-//         ellmone = 1/(as<vec>(lambdalist[ell])*tau(ell));
-//         ellmone = ellmone % replace_cpp(list[ell],1.0/Psi_ellmone);
-//       }
-//       else{
-//         ellmone = ones(npar(ell)) * 1/tau(ell);
-//       }
-//       v_kl = 1/(ellpone_sums + ellmone);
-//       
-//       // posterior mean
-//       ellpone_sums = groupsum_cpp(as<vec>(thetalist[ell+1])/denom,list[ell+1],npar(ell));
-//       thetatilde = v_kl % ellpone_sums;
-//       
-//       vec thetabar = ones(npar(ell))*thetabar_cross;
-//       if(ell>0) vec thetabar = replace_cpp(list[ell],thetalist[ell-1]);
-//       
-//       // draw theta
-//       vec xiell = thetatilde + sqrt(v_kl) % randn(npar(ell));
-//       theta = thetabar + xiell;
-//       
-//       // store draw
-//       thetalist[ell] = theta;
-//       
-//       
-//       
-//       
-//       
-//       
-//       
-//       
-//             
-//       
-//       // tau //
-//       // levelsums = sum(pow(xiell,2.0)/(Psi_ellmone % as<vec>(lambdalist[ell])));
-//       // tau(ell) = 1.0/R::rgamma(0.5*(npar(ell)+1), 1.0/(1.0/xitau(ell)+0.5*as_scalar(levelsums)));
-//       // xitau(ell) = 1.0/R::rgamma(1,1.0/(1+1.0/tau(ell)));
-// 
-//     }
-//     
-//     // -------------------------------------------------------------- //
-//     // product-level elasticities + phi + sigmasq
-//     // -------------------------------------------------------------- //
-//     
-//     if(propagate) Psi_Lmone = create_Psi_ellmone_cpp(lambdalist,childrencounts,list,npar,L);
-//     else Psi_Lmone = ones(npar[L-1]); ////////////////////////////////////
-//     betabar(wchown) = replace_cpp(list_own[L-1],thetalist_own[L-2]);
-//     lamstar(wchown) = as<vec>(lambdalist_own[L-1]) * tau_own(L-1);
-//     betabar(wchcross) = replace_cpp(list[L-1],thetalist[L-2]);
-//     lamstar(wchcross) = as<vec>(lambdalist[L-1]) % Psi_Lmone * tau(L-1);
+//     // lamstar(wchcross) = lambda*as_scalar(tau);
+//     lamstar = lambda*as_scalar(tau);
 //     
 //     for(int i=0;i<p;i++){
 //       
 //       // precompute
 //       Xt = X/sqrt(sigmasq(i));
 //       Lam = diagmat(lamstar(span(p*i,p*i+p-1)));
-//       XtLamXtp = Xt*Lam*trans(Xt);
-//       Ystar = Y.col(i) - X*betabar(span(p*i,p*i+p-1));
-//       
+//       XtLamXtp = Xt * Lam * trans(Xt);
+// 
 //       // phi (marginalizing over beta)
 //       // first use Woodbury to rewrite inverse as (Xt'Xt + Lam^-1)^-1 = Lam - LamXt'(I + XtLamXt')^-1XtLam
 //       // then projection matrix is can be written as:
-//       // I - Xt(Xt'Xt + Lam^-1)^-1Xt'
+//       // I - Xt(Xt'Xt + Lam^-1)^-1Xt' 
 //       // = I - Xt(Lam - LamXt'(I + XtLamXt')^-1XtLam)Xt'
 //       // = I - (XtLamXt' - XtLamXt'(I + XtLamXt')^-1XtLamXt'
 //       mat C = Clist[i];
@@ -630,86 +487,53 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
 //       irootXt = solve(trimatu(chol(symmatu(XtLamXtp + eye(n,n)))),eye(n,n));
 //       projmat = eye(n,n) - (XtLamXtp - XtLamXtp*irootXt*trans(irootXt)*XtLamXtp);
 //       irootC = solve(trimatu(chol(symmatu(trans(Ct)*projmat*Ct + Aphi(i,i)))), eye(nphi(i),nphi(i)));
-//       // phitilde = (irootC*trans(irootC))*(trans(Ct)*projmat*Ystar/sqrt(sigmasq(i)) + Aphi(i,i)*phibar(i));
-//       // phi(span(cumnphi(i)-nphi(i),cumnphi(i)-1)) = phitilde + irootC*randn(nphi(i));
+//       phitilde = (irootC*trans(irootC))*(trans(Ct)*projmat*Y.col(i)/sqrt(sigmasq(i)) + Aphi(i,i)*phibar(i));
+//       phi(span(cumnphi(i)-nphi(i),cumnphi(i)-1)) = phitilde + irootC*randn(nphi(i));
 //       
 //       // Ystar
-//       Ystar = Y.col(i) - C*phi(span(cumnphi(i)-nphi(i),cumnphi(i)-1)) - X*betabar(span(p*i,p*i+p-1));
+//       Ystar = Y.col(i) - C*phi(span(cumnphi(i)-nphi(i),cumnphi(i)-1));
 //       ytstar = vectorise(Ystar)/sqrt(sigmasq(i));
 //       
 //       // beta (conditional)
-//       u = sqrt(lamstar(span(p*i,p*i+p-1))) % randn<vec>(p);
+//       u = betabar(span(p*i,p*i+p-1)) + sqrt(lamstar(span(p*i,p*i+p-1))) % randn<vec>(p);
 //       v = Xt * u + randn<vec>(n);
 //       w = (irootXt*trans(irootXt)) * (ytstar - v);
-//       xi(span(p*i,p*i+p-1)) = u + diagmat(lamstar(span(p*i,p*i+p-1))) * trans(Xt) * w;
-//       beta(span(p*i,p*i+p-1)) = betabar(span(p*i,p*i+p-1)) + xi(span(p*i,p*i+p-1));
-// 
-//       //////////////////////
-//       B.col(i) = beta(span(p*i,p*i+p-1));
-//       Cphi.col(i) = C*phi(span(cumnphi(i)-nphi(i),cumnphi(i)-1));
-//       //////////////////////
+//       beta(span(p*i,p*i+p-1)) = u + diagmat(lamstar(span(p*i,p*i+p-1))) * trans(Xt) * w;
 //       
 //       // sigmasq
-//       // vec E = Y.col(i) - X*beta(span(p*i,p*i+p-1)) - C*phi(span(cumnphi(i)-nphi(i),cumnphi(i)-1));
-//       // rate = a + 0.5*trans(E)*E;
-//       // sigmasq(i) = 1.0/R::rgamma(b+0.5*n, 1.0/as_scalar(rate));
+//       vec E = Y.col(i) - X*beta(span(p*i,p*i+p-1)) - C*phi(span(cumnphi(i)-nphi(i),cumnphi(i)-1));
+//       scale = a + 0.5*trans(E)*E;
+//       sigmasq(i) = 1/R::rgamma(b + 0.5*n,1/as_scalar(scale));
 //       
 //     }
 //     
-//     // save elasticities
-//     thetalist[L-1] = vectorise(beta(wchcross));
-//     thetalist_own[L-1] = vectorise(beta(wchown));
-// 
-//     // tau (cross)//
-//     levelsums = sum(pow(xi(wchcross),2.0)/Psi_Lmone/as<vec>(lambdalist[L-1]));
-//     tau(L-1) = 1.0/R::rgamma(0.5*(npar(L-1)+1), 1.0/(1.0/xitau(L-1)+0.5*as_scalar(levelsums)));
-//     xitau(L-1) = 1.0/R::rgamma(1,1.0/(1+1.0/tau(L-1)));
+//     // tau ~ C+(0,1)//
+//     // levelsums = sum(pow(beta(wchcross),2.0)/lambda);
+//     // tau = 1/R::rgamma(0.5*(p*p-p+1), 1/as_scalar(1/xitau+0.5*levelsums));
+//     levelsums = sum(pow(beta,2.0)/lambda);
+//     tau = 1/R::rgamma(0.5*(p*p+1), 1/as_scalar(1/xitau+0.5*levelsums));
+//     xitau = 1/R::rgamma(1,as_scalar(1/(1+1/tau)));
 //     
-//     // tau (own)//
-//     levelsums = sum(pow(xi(wchown),2.0)/as<vec>(lambdalist_own[L-1]));
-//     tau_own(L-1) = 1.0/R::rgamma(0.5*(npar_own(L-1)+1), 1.0/(1.0/xitau_own(L-1)+0.5*as_scalar(levelsums)));
-//     xitau_own(L-1) = 1.0/R::rgamma(1,1.0/(1+1.0/tau_own(L-1)));
-//     
-//     // lambda (default to ridge)
-//     lambda = ones(npar(L-1));
-//     xilambda = as<vec>(xilambdalist[L-1]);
-//     lambda_own = ones(npar_own(L-1));
-//     xilambda_own = as<vec>(xilambdalist_own[L-1]);
-//     
+//     // lambda 
+//     // ridge: keep fixed at one
+//     if(Shrinkage=="lasso"){
+//       lambda = ones(npar); 
+//     }
 //     // lasso: Exp(1/2)=Gamma(1,1/2)
-//     if(product_shrinkage=="lasso" && rep>=initial_run){
-//       // cross
-//       mutilde = sqrt(2.0)*sqrt(Psi_Lmone)*sqrt(tau(L-1))/abs(xi(wchcross));
-//       lambda = 1/randinvgaussian(npar(L-1),mutilde,2);
-//       lambdalist[L-1] = lambda;
-//       
-//       // own
-//       mutilde = sqrt(2.0)*sqrt(tau_own(L-1))/abs(xi(wchown));
-//       lambda_own = 1/randinvgaussian(npar_own(L-1),mutilde,2);
-//       lambdalist_own[L-1] = lambda_own;
+//     if(Shrinkage=="lasso"){
+//       // vec mutilde = pow(2*tau(0)/pow(beta(wchcross),2.0),0.5);
+//       vec mutilde = pow(2*tau(0)/pow(beta,2.0),0.5);
+//       lambda = 1/randinvgaussian(npar,mutilde,2); 
+//     }
+//     // horseshoe: C+(0,1)
+//     if(Shrinkage=="horseshoe"){
+//       // scale = 1/xilambda + 0.5*pow(beta(wchcross),2.0)/as_scalar(tau);
+//       scale = 1/xilambda + 0.5*pow(beta,2.0)/as_scalar(tau);
+//       lambda = randig(npar,ones(npar),scale);
+//       scale = 1+1/lambda;
+//       xilambda = randig(npar,ones(npar),scale);
 //     }
 //     
-//     // horseshoe: C+(0,1)
-//     if(product_shrinkage=="horseshoe" && rep>=initial_run){
-//       
-//       // cross
-//       scale = 1.0/xilambda + 0.5*pow(xi(wchcross),2.0)/Psi_Lmone/as_scalar(tau(L-1));
-//       lambda = randig(npar(L-1),ones(npar(L-1)),scale);
-//       scale = 1 + 1.0/lambda;
-//       xilambda = randig(npar(L-1),ones(npar(L-1)),scale);
-//       lambdalist[L-1] = lambda;
-//       xilambdalist[L-1] = xilambda;
-//       
-//       // own
-//       scale = 1.0/xilambda_own + 0.5*pow(xi(wchown),2.0)/as_scalar(tau_own(L-1));
-//       lambda_own = randig(npar_own(L-1),ones(npar_own(L-1)),scale);
-//       scale = 1 + 1.0/lambda_own;
-//       xilambda = randig(npar_own(L-1),ones(npar_own(L-1)),scale);
-//       lambdalist_own[L-1] = lambda_own;
-//       xilambdalist_own[L-1] = xilambda_own;
-//       
-//     }
-//   
 //     // -------------------------------------------------------------- //
 //     // print time and store draws
 //     // -------------------------------------------------------------- //
@@ -717,39 +541,36 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
 //     if(print){
 //       // time
 //       if(rep==0){
-//         if(timer.toc()/60.0*(RepRun-rep-1)/(rep+1)<1){
-//           Rprintf("Estimated time: %.1f seconds \n",timer.toc()*(RepRun-rep-1)/(rep+1));
+//         if(timer.toc()/60.0*(Rep-rep-1)/(rep+1)<1){
+//           Rprintf("Estimated time: %.1f seconds \n",timer.toc()*(Rep-rep-1)/(rep+1));
 //           Rprintf("  0%%   10   20   30   40   50   60   70   80   90   100%%\n");
 //           Rprintf("  |----|----|----|----|----|----|----|----|----|----|\n");
 //         }
 //         else{
-//           Rprintf("Estimated time: %.1f minutes \n",timer.toc()/60.0*(RepRun-rep-1)/(rep+1));
+//           Rprintf("Estimated time: %.1f minutes \n",timer.toc()/60.0*(Rep-rep-1)/(rep+1));
 //           Rprintf("  0%%   10   20   30   40   50   60   70   80   90   100%%\n");
 //           Rprintf("  |----|----|----|----|----|----|----|----|----|----|\n");
 //         }
 //       }
-//       if(RepRun>50){
-//         if ((rep+1)%(RepRun/50)==0){
-//           if(rep+1==RepRun/50){
+//       if(Rep>50){
+//         if ((rep+1)%(Rep/50)==0){
+//           if(rep+1==Rep/50){
 //             Rprintf("  *");
 //           }
-//           else if(rep<RepRun-1){
+//           else if(rep<Rep-1){
 //             Rprintf("*");
 //           }
 //           else Rprintf("*\n");
 //         }
-//       }
+//       } 
 //     }
 //     
 //     // store draws
-//     if(rep>=initial_run && (rep+1)%keep==0){
-//       mkeep = (rep-initial_run+1)/keep;
+//     if((rep+1)%keep==0){
+//       mkeep = (rep+1)/keep;
 //       betadraws(mkeep-1,span::all) = trans(beta);
-//       thetadraws(mkeep-1,span::all) = trans(unlist(thetalist,sum(npar)));
-//       thetaowndraws(mkeep-1,span::all) = trans(unlist(thetalist_own,sum(npar_own)));
-//       lambdadraws(mkeep-1,span::all) = trans(unlist(lambdalist,sum(npar)));
-//       taudraws(mkeep-1,span::all) = trans(tau);
-//       tauowndraws(mkeep-1,span::all) = trans(tau_own);
+//       lambdadraws(mkeep-1,span::all) = trans(lambda);
+//       taudraws(mkeep-1,span::all) = tau;
 //       sigmasqdraws(mkeep-1,span::all) = trans(sigmasq);
 //       phidraws(mkeep-1,span::all) = trans(phi);
 //     }
@@ -768,17 +589,13 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
 //   
 //   return List::create(
 //     Named("betadraws") = betadraws,
-//     Named("thetadraws") = thetadraws,
-//     Named("thetaowndraws") = thetaowndraws,
 //     Named("lambdadraws") = lambdadraws,
 //     Named("taudraws") = taudraws,
-//     Named("tauowndraws") = tauowndraws,
 //     Named("sigmasqdraws") = sigmasqdraws,
 //     Named("phidraws") = phidraws
 //   );
 //   
 // }
-
 
 // including hierarchical prior on own elasticities
 //[[Rcpp::export]]
@@ -995,12 +812,12 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
         tau(ell) = 1.0/R::rgamma(0.5*(npar(ell)+1), 1.0/(1.0/xitau(ell)+0.5*as_scalar(levelsums)));
         xitau(ell) = 1.0/R::rgamma(1,1.0/(1+1.0/tau(ell)));
       }
-      // if(ell==0){
-      //   mean = replace_cpp(list[ell],thetabar_cross*ones(1));
-      //   levelsums = sum(pow(as<vec>(thetalist[ell]) - mean,2.0)/(Psi_ellmone % as<vec>(lambdalist[ell])));
-      //   tau(ell) = 1.0/R::rgamma(0.5*(npar(ell)+1), 1.0/(1.0/xitau(ell)+0.5*as_scalar(levelsums)));
-      //   xitau(ell) = 1.0/R::rgamma(1,1.0/(1+1.0/tau(ell)));
-      // }
+      if(ell==0){
+        mean = replace_cpp(list[ell],thetabar_cross*ones(1));
+        levelsums = sum(pow(as<vec>(thetalist[ell]) - mean,2.0)/(Psi_ellmone % as<vec>(lambdalist[ell])));
+        tau(ell) = 1.0/R::rgamma(0.5*(npar(ell)+1), 1.0/(1.0/xitau(ell)+0.5*as_scalar(levelsums)));
+        xitau(ell) = 1.0/R::rgamma(1,1.0/(1+1.0/tau(ell)));
+      }
 
       // lambda //
 

@@ -6,7 +6,7 @@ library(here)
 library(xtable)
 library(snakecase)
 
-source(here("simulation","simulation_functions.R"))
+source(here("functions","simulation_functions.R"))
 source(here("functions","shrinkage_functions.R"))
 sourceCpp(here("functions","shrinkage_mcmc.cpp"))
 
@@ -31,12 +31,10 @@ data = list(dense_dense = data_dense_dense,
             sparse = data_sparse)
 
 # data generating processes (beta_theta)
-# dgps = c("dense_dense",
-#          "sparse_transform",
-#          "sparse_sparse",
-#          "sparse")
-dgps = c("sparse_sparse")
-# dgps = c("sparse_transform")
+dgps = c("dense_dense",
+         "sparse_transform",
+         "sparse_sparse",
+         "sparse")
 
 # ------------------------------------------------------------- #
 # fit models
@@ -72,12 +70,6 @@ progress = function(n) setTxtProgressBar(pb, n)
 opts = list(progress=progress)
 
 # Mcmc
-# Mcmc = list(
-#   R = 1000,
-#   initial_run = 100,
-#   keep = 1,
-#   burn_pct = 0.75
-# )
 Mcmc = list(
   R = 1000,
   initial_run = 0,
@@ -147,31 +139,3 @@ for(i in 1:length(data)){
            height=5,width=5,
            bg = "transparent")
 }
-
-# tmp = NULL
-# for(i in 1:length(data)){
-#   tmpdata = melt(data[[i]][[1]][[1]]$B) %>%
-#     mutate(dgp = paste0("(",as.roman(i),")"))
-#   tmp = bind_rows(tmp,tmpdata)
-# }
-# tmp %>%
-#   filter(Var1!=Var2) %>%
-#   mutate(Var1=as.factor(Var1),
-#          Var2=as.factor(Var2)) %>%
-#   ggplot(aes(x=Var1,y=fct_rev(Var2),fill=value)) + 
-#   geom_tile(color="white") + 
-#   labs(x="",y="") +
-#   scale_x_discrete(position = "top") +
-#   scale_fill_gradient2(low="#F8766D",mid="white",high="#00BFC4") +
-#   facet_wrap(dgp~.) +
-#   theme_minimal() +
-#   theme(legend.position="none",
-#         # strip.background = element_rect(color="black"),
-#         # strip.background = element_rect(fill="grey", color="grey"),
-#         panel.border = element_rect(color="black",fill=NA,size=0.5),
-#         axis.text.x=element_blank(),
-#         axis.text.y=element_blank())
-# path = "/Users/adamsmith/Dropbox/Research/Hierarchical Shrinkage/paper/figures/"
-# ggsave(filename=paste0(path,"simulated_elasticities"),height=5,width=5,device="png")
-# dev.copy2pdf(file=paste0(path,"simulated_elasticities.pdf"),height=5,width=5)
-

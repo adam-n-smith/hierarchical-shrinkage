@@ -4,7 +4,7 @@ library(fastDummies)
 load("build/output/IRI_category_data.RData")
 
 # ----------------------------------------------- #
-# manipulate
+# preliminaries
 # ----------------------------------------------- #
 
 # weeks
@@ -20,97 +20,93 @@ data_store %>%
   mutate(SHARE = SALES/sum(SALES),
          CUMSHARE = cumsum(SHARE))
 
-# ----------------------------------------------- #
-# 
-# ----------------------------------------------- #
-
 prod_def = c("LARGE_CATEGORY","SMALL_CATEGORY","BRAND")
 
 # weeks in the training data
 weeks = weeks_table %>%
-  filter(YEAR==2011) %>%
+  filter(YEAR %in% years) %>%
   pull(WEEK)
 
 # compute pack size by category
 size_table = data_store %>%
   mutate(NUMBER = as.numeric(str_extract(word(UPC_DESCRIPTION,-1),"\\d\\.\\d+|\\d+")),
-         UNITS = str_sub(UPC_DESCRIPTION,-2,-1),
+         UOM = str_sub(UPC_DESCRIPTION,-2,-1),
          CAT_SIZE = NUMBER/VOL_EQ) %>%
-  group_by(LARGE_CATEGORY,UNITS) %>%
+  drop_na() %>%
+  group_by(LARGE_CATEGORY,UOM) %>%
   count(CAT_SIZE) %>%
   filter(n==max(n)) %>%
-  mutate(CAT_SIZE = ifelse(UNITS %in% c("PT","LB"),CAT_SIZE*16,CAT_SIZE)) %>%
+  mutate(CAT_SIZE = ifelse(UOM %in% c("PT","LB"),CAT_SIZE*16,CAT_SIZE)) %>%
   ungroup() %>%
-  select(-c(n,UNITS)) %>%
+  select(-c(n,UOM)) %>%
   distinct()
-
-# compute category/subcategory shares and remove small subcategories
-cat_weight_table = data_store %>%
-  mutate(SALES = sum(DOLLARS)) %>%
-  group_by(LARGE_CATEGORY) %>%
-  mutate(CAT_SALES = sum(DOLLARS),
-         CAT_SHARE = CAT_SALES/SALES,
-         SUBCAT_COUNT = n_distinct(SMALL_CATEGORY)) %>%
-  group_by(LARGE_CATEGORY,SMALL_CATEGORY) %>%
-  summarise(CAT_SALES = CAT_SALES[1],
-            CAT_SHARE = CAT_SHARE[1],
-            SUBCAT_COUNT = SUBCAT_COUNT[1],
-            CAT_N = max(round(100*CAT_SHARE),SUBCAT_COUNT),
-            SUBCAT_SALES = sum(DOLLARS),
-            SUBCAT_SHARE = SUBCAT_SALES / CAT_SALES,
-            N = max(2,round(CAT_N*SUBCAT_SHARE)), .groups="drop") %>%
-  filter(SUBCAT_SHARE>0.01) %>%
-  select(LARGE_CATEGORY,SMALL_CATEGORY,N)
-small_categories = cat_weight_table$SMALL_CATEGORY
 
 # ----------------------------------------------- #
 # select products
 # ----------------------------------------------- #
 
-# product summary
+# small categories
+small_categories = data_store %>%
+  left_join(weeks_table) %>%
+  group_by(LARGE_CATEGORY,SMALL_CATEGORY) %>%
+  summarise(REVENUE = sum(DOLLARS, na.rm=TRUE),
+            nYEAR = n_distinct(YEAR),
+            nBRAND = n_distinct(BRAND)) %>%
+  group_by(LARGE_CATEGORY) %>%
+  mutate(SHARE = REVENUE/sum(REVENUE)) %>%
+  filter(SHARE>0.02, nYEAR==length(years)) %>%
+  pull(SMALL_CATEGORY)
+
+# product
 product_table = data_store %>%
   filter(SMALL_CATEGORY %in% small_categories) %>%
   filter(UNITS>0) %>%
   group_by_at(c("IRI_KEY",prod_def)) %>%
-  mutate(PRICE = DOLLARS/UNITS,
-         LAG_PRICE = lag(PRICE,1)) %>%
+  mutate(PRICE = DOLLARS/UNITS) %>%
   group_by_at(prod_def) %>%
   summarise(revenue = sum(DOLLARS,na.rm=TRUE),
             n_stores = n_distinct(IRI_KEY),
-            n_weeks = n_distinct(WEEK),
+            min_week = min(WEEK),
+            max_week = max(WEEK),
+            n_weeks = n_distinct(IRI_KEY,WEEK),
             price_levels = n_distinct(round(PRICE,2)),
-            price_change = mean(abs(PRICE-LAG_PRICE)>0.01,na.rm=TRUE),
-            UPCs = list(UPC), .groups="drop") %>%
-  # remove missing
-  filter(n_weeks == length(weeks)) %>%
-  filter(price_levels > 1) %>%
-  # filter(price_change > 0.05) %>%
-  filter(n_stores==length(stores)) %>%
-  # ranking
-  left_join(cat_weight_table,by=c("LARGE_CATEGORY","SMALL_CATEGORY")) %>%
-  group_by(LARGE_CATEGORY,SMALL_CATEGORY) %>%
-  mutate(RANK=rank(-revenue)) %>%
-  filter(RANK<=3*N) %>%
+            UPCs = list(UPC),
+            nUPCs = n_distinct(UPC), .groups="drop") %>%
+  group_by_at(c("LARGE_CATEGORY","SMALL_CATEGORY")) %>%
+  mutate(total_revenue = sum(revenue),
+         share = revenue/total_revenue) %>%
+  arrange(LARGE_CATEGORY,SMALL_CATEGORY,-share) %>%
+  mutate(cum_share = cumsum(share),
+         rank = 1:n()) %>%
+  # apply filtering criteria
+  filter(cum_share<0.85 | rank<=2) %>%
+  filter(n_weeks>0.95*length(stores)*length(weeks)) %>%
   # create product IDs
   group_by_at(prod_def) %>%
   mutate(PRODUCT = cur_group_id()) %>%
   ungroup() %>%
-  select(PRODUCT,LARGE_CATEGORY,SMALL_CATEGORY,BRAND,
-         revenue,n_weeks,price_change,price_levels,UPCs)
+  select(PRODUCT,LARGE_CATEGORY,SMALL_CATEGORY,BRAND,nUPCs,UPCs,
+         revenue,min_week,max_week,n_weeks,price_levels,share,cum_share)
 
 # share of revenue
 upcs = unique(unlist(product_table$UPCs))
-coverage_table = data_store %>%
+coverage = data_store %>%
   filter(WEEK %in% weeks) %>%
   filter(IRI_KEY %in% stores) %>%
   mutate(TOTAL=sum(DOLLARS)) %>%
   filter(UPC %in% upcs) %>%
-  summarise(SHARE=sum(DOLLARS)/TOTAL[1])
+  summarise(SHARE=sum(DOLLARS)/TOTAL[1]) %>%
+  pull(SHARE)
 
 # trees
 tree_names = product_table %>%
   select(LARGE_CATEGORY,SMALL_CATEGORY,BRAND) %>%
-  distinct()
+  distinct() %>%
+  mutate(PRODUCT = 1:n())
+tree_names_clean = tree_names %>%
+  mutate(SMALL_CATEGORY = to_any_case(SMALL_CATEGORY,case="title",parsing_option=0),
+         SMALL_CATEGORY = str_remove(SMALL_CATEGORY,"\\([^(]*$"),
+         BRAND = to_any_case(BRAND,case="title",parsing_option=0))
 tree = product_table %>%
   select(LARGE_CATEGORY,SMALL_CATEGORY,BRAND) %>%
   mutate(LARGE_CATEGORY = as.numeric(factor(LARGE_CATEGORY,levels=unique(LARGE_CATEGORY))),
@@ -124,10 +120,11 @@ tree = product_table %>%
 
 # compute UPC weight table
 weight_table = data_store %>%
+  left_join(weeks_table) %>%
   filter(UPC %in% upcs) %>%
-  group_by(LARGE_CATEGORY,SMALL_CATEGORY,BRAND) %>%
+  group_by(LARGE_CATEGORY,SMALL_CATEGORY,BRAND,YEAR) %>%
   mutate(TOTAL_SALES=sum(DOLLARS)) %>%
-  group_by(LARGE_CATEGORY,SMALL_CATEGORY,BRAND,UPC) %>%
+  group_by(LARGE_CATEGORY,SMALL_CATEGORY,BRAND,UPC,YEAR) %>%
   summarise(WT=sum(DOLLARS)/TOTAL_SALES[1], .groups="drop")
 
 # compute panel in long format
@@ -135,32 +132,34 @@ panel = data_store %>%
   filter(IRI_KEY %in% stores, UPC %in% upcs) %>%
   filter(UNITS>0) %>%
   left_join(size_table,by="LARGE_CATEGORY") %>%
-  left_join(weight_table,by=c("LARGE_CATEGORY","SMALL_CATEGORY","BRAND","UPC")) %>%
   mutate(PRICE = DOLLARS/UNITS,
          FEATURE = ifelse(F=="NONE",0,1),
-         DISPLAY = ifelse(D==0,0,1)) %>%
-  # create rows for missing UPC prices
-  select(IRI_KEY,WEEK,UPC,UNITS,PRICE,FEATURE,DISPLAY,UPC_DESCRIPTION,BRAND,VENDOR,SMALL_CATEGORY,
-         LARGE_CATEGORY,VOL_EQ,CAT_SIZE,WT) %>%
-  group_by(across(-c(WEEK,UNITS,PRICE,FEATURE,DISPLAY))) %>%
-  complete(WEEK=seq(minweek,maxweek)) %>%
-  # impute missing values
-  fill(PRICE,.direction="downup") %>%
-  mutate(across(everything(),~replace_na(.,0))) %>%
+         DISPLAY = ifelse(D==0,0,1),
+         SIZE = VOL_EQ*CAT_SIZE) %>%
+  # bring in and normalize weights
+  left_join(weeks_table,by="WEEK") %>%
+  left_join(weight_table,by=c("LARGE_CATEGORY","SMALL_CATEGORY","BRAND","UPC","YEAR")) %>%
+  mutate(WT = replace_na(WT,0)) %>%
   group_by_at(c("IRI_KEY","WEEK",prod_def)) %>%
-  # normalize weights
   mutate(WT = WT/sum(WT)) %>%
   # compute weighted average of marketing variables
+  # summarise(PRICE = sum(WT*PRICE/SIZE),
+  #           UNITS = sum(UNITS*SIZE),
+  #           FEATURE = sum(WT*FEATURE),
+  #           DISPLAY = sum(WT*DISPLAY)) %>%
   summarise(PRICE = sum(WT*PRICE/VOL_EQ),
             UNITS = sum(UNITS*VOL_EQ),
             FEATURE = sum(WT*FEATURE),
-            DISPLAY = sum(WT*DISPLAY),
-            UPCs = list(UPC), .groups="drop")
-  # summarise(PRICE = sum(WT*PRICE/(VOL_EQ*CAT_SIZE)),
-  #           UNITS = sum(UNITS*VOL_EQ*CAT_SIZE),
-  #           FEATURE = sum(WT*FEATURE),
-  #           DISPLAY = sum(WT*DISPLAY),
-  #           UPCs = list(UPC), .groups="drop")
+            DISPLAY = sum(WT*DISPLAY)) %>%
+  # imputation for missing obs
+  group_by_at(c("IRI_KEY",prod_def)) %>%
+  complete(WEEK=seq(minweek,maxweek)) %>%
+  group_by_at(c("IRI_KEY",prod_def)) %>%
+  fill(PRICE,.direction="downup") %>%
+  mutate(UNITS = replace_na(UNITS,min(UNITS[!is.na(UNITS)])/2),
+         FEATURE = replace_na(FEATURE,0),
+         DISPLAY = replace_na(DISPLAY,0))%>%
+  ungroup()
 
 # ----------------------------------------------- #
 # construct price, demand, and promotion tables
@@ -168,26 +167,23 @@ panel = data_store %>%
 
 # prices, quantities, promotions
 prices = panel %>%
-  inner_join(product_table[,c("PRODUCT",prod_def)], by = c("LARGE_CATEGORY", "SMALL_CATEGORY", "BRAND")) %>%
-  mutate(PRICE=log(PRICE)) %>%
+  inner_join(product_table[,c("PRODUCT",prod_def)], by = prod_def) %>%
+  mutate(PRICE = log(PRICE)) %>%
   select(IRI_KEY,PRODUCT,WEEK,PRICE) %>%
   pivot_wider(names_from=PRODUCT,values_from=PRICE,names_prefix="PRICE_")
-# check UNITS ###################################
 demand = panel %>%
-  inner_join(product_table[,c("PRODUCT",prod_def)], by = c("LARGE_CATEGORY", "SMALL_CATEGORY", "BRAND")) %>%
-  mutate(UNITS = ifelse(UNITS==0,log(0.1),log(UNITS))) %>%
+  inner_join(product_table[,c("PRODUCT",prod_def)], by = prod_def) %>%
+  mutate(UNITS = log(UNITS)) %>%
   select(IRI_KEY,PRODUCT,WEEK,UNITS) %>%
   arrange(IRI_KEY,PRODUCT,WEEK) %>%
   pivot_wider(names_from=PRODUCT,values_from=UNITS,names_prefix="UNITS_")
 feature = panel %>%
-  inner_join(product_table[,c("PRODUCT",prod_def)], by = c("LARGE_CATEGORY", "SMALL_CATEGORY", "BRAND")) %>%
-  mutate(IRI_KEY,FEATURE = ifelse(is.nan(FEATURE),0,FEATURE)) %>%
+  inner_join(product_table[,c("PRODUCT",prod_def)], by = prod_def) %>%
   group_by(PRODUCT) %>%
   select(IRI_KEY,PRODUCT,WEEK,FEATURE) %>%
   pivot_wider(names_from=PRODUCT,values_from=FEATURE,names_prefix="FEATURE_")
 display = panel %>%
-  inner_join(product_table[,c("PRODUCT",prod_def)], by = c("LARGE_CATEGORY", "SMALL_CATEGORY", "BRAND")) %>%
-  mutate(DISPLAY = ifelse(is.nan(DISPLAY),0,DISPLAY)) %>%
+  inner_join(product_table[,c("PRODUCT",prod_def)], by = prod_def) %>%
   group_by(PRODUCT) %>%
   select(IRI_KEY,PRODUCT,WEEK,DISPLAY) %>%
   pivot_wider(names_from=PRODUCT,values_from=DISPLAY,names_prefix="DISPLAY_") 
@@ -197,9 +193,10 @@ seasonal = panel %>%
   dummy_cols(select_columns="QUARTER",
              remove_first_dummy = TRUE) %>%
   left_join(demand,by="WEEK") %>%
-  select(starts_with("QUARTER_")) 
+  select(starts_with(c("MONTH","QUARTER_","YEAR","HOLIDAY"))) %>%
+  mutate(SUMMER = ifelse(MONTH>=6 & MONTH<=9,1,0))
 
 # save 
 save(panel,demand,prices,feature,display,seasonal,
-     product_table,tree_names,tree,coverage_table,markets,
+     product_table,tree,tree_names,tree_names_clean,coverage,markets,
      file="build/output/store_panel.RData")
