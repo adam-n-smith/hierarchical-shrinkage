@@ -12,7 +12,7 @@ sourceCpp(here("functions","shrinkage_mcmc.cpp"))
 
 n = 50
 p_vec = 100
-nrep = 1
+nrep = 25
 
 # ------------------------------------------------------------- #
 # generate data sets
@@ -72,7 +72,7 @@ opts = list(progress=progress)
 # Mcmc
 Mcmc = list(
   R = 1000,
-  initial_run = 0,
+  initial_run = 100,
   keep = 1,
   burn_pct = 0.75
 )
