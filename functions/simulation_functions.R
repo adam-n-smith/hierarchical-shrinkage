@@ -235,12 +235,17 @@ fit_parallel = function(DataList,Mcmc,p_vec,models,dgp){
                 B = matrix(fit$betadraws[burn+r,],p,p)
                 Brmse[r] = sqrt(mean((data$B - B)^2))
               }
+              rmse = mean(Brmse)
+              
+              # compute share of correct signs
+              B = apply(fit$betadraws[burn:end,],2,mean)
+              signs = mean(sign(B)==sign(data$B))
 
               # save
-              mean(Brmse)
+              c(rmse,signs)
             }
   
-  colnames(out) = paste0("p_",p_vec,"_",dgp)
+  colnames(out) = c(paste0("rmse_",p_vec,"_",dgp),paste0("signs_",p_vec,"_",dgp))
   
   ctime = proc.time()[3]
   cat("\n Total Time:",round((ctime - itime)/60,2),"minutes",fill = TRUE)
