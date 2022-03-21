@@ -45,6 +45,16 @@ elasticities %>%
             n_sig = sum(sig),
             share_neg = mean(mean<0))
 
+# summary stats (cross)
+elasticities %>%
+  filter(!own) %>%
+  mutate(sig = !(lower<0 & upper>0)) %>%
+  group_by(model) %>%
+  summarise(mean_all = mean(mean), 
+            mean_sig = mean(mean[sig]),
+            n_sig = sum(sig),
+            share_neg = mean(mean<0))
+
 # cross
 elasticities %>%
   filter(!own) %>%
