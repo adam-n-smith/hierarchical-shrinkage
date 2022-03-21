@@ -176,6 +176,9 @@ abline(h=data$B,col=rainbow(p^2))
 plot(data$thetalist[[3]],apply(out$thetadraws[burn:end,(cumsum(npar)[2]+1):cumsum(npar)[3]],2,mean),xlab="true",ylab="estimated")
 abline(0,1)
 
+# check share of correct signs
+mean(sign(data$thetalist[[3]]) == sign(apply(out$thetadraws[burn:end,(cumsum(npar)[2]+1):cumsum(npar)[3]],2,mean)))
+
 # tau
 matplot(sqrt(out$taudraws),type="l",col=1:L)
 abline(h=sqrt(data$tau),col=1:L)
