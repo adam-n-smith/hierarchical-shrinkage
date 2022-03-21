@@ -20,20 +20,20 @@ nrep = 25
 
 set.seed(1)
 data_dense_dense = simdata_batch(p_vec,nrep,"hierarchical",prop_sparse=c(0,0,0),transform=FALSE)
-data_sparse_transform = simdata_batch(p_vec,nrep,"hierarchical",prop_sparse=c(0,0,0.75),transform=TRUE)
+data_dense_transform = simdata_batch(p_vec,nrep,"hierarchical",prop_sparse=c(0,0,0.75),transform=TRUE)
 data_sparse_sparse = simdata_batch(p_vec,nrep,"hierarchical",prop_sparse=c(0,0.75,0),transform=FALSE)
 data_sparse = simdata_batch(p_vec,nrep,"sparse",prop_sparse=0.75)
 
 # bind together data
-data = list(dense_dense = data_dense_dense,
-            sparse_transform = data_sparse_transform,
-            sparse_sparse = data_sparse_sparse,
+data = list(dense.dense = data_dense_dense,
+            dense.transform = data_dense_transform,
+            sparse.sparse = data_sparse_sparse,
             sparse = data_sparse)
 
 # data generating processes (beta_theta)
-dgps = c("dense_dense",
-         "sparse_transform",
-         "sparse_sparse",
+dgps = c("dense.dense",
+         "dense.transform",
+         "sparse.sparse",
          "sparse")
 
 # ------------------------------------------------------------- #
@@ -52,7 +52,6 @@ models = matrix(c("ridge","sparse",
                   "horseshoe","horseshoe"),
                 ncol=2,byrow=TRUE)
 
-
 # models to fit
 models = matrix(c("ridge","ridge",
                   "lasso","ridge",
@@ -63,7 +62,7 @@ models = matrix(c("ridge","ridge",
                 ncol=2,byrow=TRUE)
 
 # initialize clusters
-cl = makeSOCKcluster(4)
+cl = makeSOCKcluster(8)
 registerDoSNOW(cl)
 pb = txtProgressBar(max=nrep, style=3)
 progress = function(n) setTxtProgressBar(pb, n)
@@ -82,7 +81,6 @@ fit = NULL
 for(i in 1:length(dgps)){
   print(dgps[i])
   tmp = fit_parallel(data[[which(names(data)==dgps[i])]],Mcmc,p_vec,models,dgp=dgps[i])
-  # fit = cbind(fit,tmp,999)
   fit = cbind(fit,tmp)
 }
 
@@ -94,21 +92,21 @@ stopCluster(cl)
 # ------------------------------------------------------------- #
 
 out = data.frame(fit) %>%
-  select(-starts_with("V")) %>%
-  # select(-paste0("V",ncol(fit))) %>%
+  # add model labels
   mutate(shrinkage = rep(paste0(to_any_case(models[,2],case="upper_camel"),"/",
                                 to_any_case(models[,1],case="upper_camel")),nrep),
          shrinkage = factor(shrinkage,levels=unique(shrinkage))) %>%
+  # compute means across data replicates
   group_by(shrinkage) %>%
   summarise(across(everything(),mean)) %>%
-  mutate(across(where(is.numeric),~ifelse(.x==999,"",.x)),
-         V0 = "") %>%
-  relocate(V0,.after=shrinkage) %>%
-  mutate(shrinkage = str_replace(shrinkage,"Sparse/",""),
-         shrinkage = str_replace(shrinkage,"Horseshoe","HS"),
-         shrinkage = str_replace(shrinkage,"/Horseshoe","/HS"),
-         shrinkage = paste("\\qquad",shrinkage)) %>%
-  mutate(across(starts_with("p_"),function(x)ifelse(x==min(x),paste("\\bf",sprintf("%.3f",x)),sprintf("%.3f",x))))
+  # restructure
+  pivot_longer(-shrinkage,names_pattern = "(.*)_(.*)_(.*)",names_to=c("variable","p","dgp")) %>%
+  filter(!(variable=="signs" & str_detect(dgp,"sparse"))) %>%
+  pivot_wider(names_from=c(variable,p,dgp),values_from=value) %>%
+  # reorder columns
+  select(shrinkage,starts_with("rmse"),starts_with("signs")) %>%
+  # add bold to 
+  mutate(across(starts_with("rmse_"),function(x)ifelse(x==min(x),paste("\\bf",sprintf("%.3f",x)),sprintf("%.3f",x))))
 
 out
 
