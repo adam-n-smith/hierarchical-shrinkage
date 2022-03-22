@@ -175,6 +175,58 @@ vec randinvgaussian(int const& n, vec const& mu, double const& lambda){
 // ---------------------------------------------------------------------- //
 
 //[[Rcpp::export]]
+vec drawbeta(mat const& Y, mat const& X, bool fast){
+  
+  int n = Y.n_rows;
+  int p = Y.n_cols;
+  vec lamstar = ones(p*p);
+  vec beta = zeros(p*p);
+  vec betabar = zeros(p*p);
+  
+  if(fast){
+    for(int i=0;i<p;i++){
+      
+      // precompute
+      mat Lam = diagmat(lamstar(span(p*i,p*i+p-1)));
+      mat XLamXp = X * Lam * trans(X);
+      mat irootXt = solve(trimatu(chol(XLamXp + eye(n,n))),eye(n,n));
+      
+      // Ystar
+      vec ytstar = vectorise(Y.col(i));
+      
+      // beta (conditional)
+      vec u = betabar(span(p*i,p*i+p-1)) + sqrt(lamstar(span(p*i,p*i+p-1))) % randn<vec>(p);
+      vec v = X * u + randn<vec>(n);
+      vec w = (irootXt*trans(irootXt)) * (ytstar - v);
+      beta(span(p*i,p*i+p-1)) = u + diagmat(lamstar(span(p*i,p*i+p-1))) * trans(X) * w;
+      
+    }
+    
+  }
+  else{
+    
+    mat XpX = trans(X)*X;
+    for(int i=0;i<p;i++){
+      
+      // precompute
+      mat Lam = diagmat(lamstar(span(p*i,p*i+p-1)));
+      mat iroot = solve(trimatu(chol(XpX + Lam)),eye(p,p));
+      
+      // Ystar
+      vec ytstar = vectorise(Y.col(i));
+      
+      // beta (conditional)
+      beta(span(p*i,p*i+p-1)) = (iroot*trans(iroot))*(trans(X)*ytstar + Lam*betabar(span(p*i,p*i+p-1)));
+      
+    }
+    
+  }
+  
+  return beta;
+}
+
+
+//[[Rcpp::export]]
 List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool print){
   
   // data
