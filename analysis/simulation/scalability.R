@@ -4,7 +4,7 @@ library(microbenchmark)
 library(tidyverse)
 library(here)
 
-sourceCpp(here("functions","shrinkage_mcmc.cpp"))
+sourceCpp(here("src","shrinkage-mcmc.cpp"))
 
 simdata_scale = function(n,p){
   Clist = NULL
@@ -33,18 +33,18 @@ simdata_scale = function(n,p){
 
 n = 100
 ntimes = 1
-plist = seq(100,1000,by=100)
-runtime = double(length(plist))
-runtime.fast = double(length(plist))
+pvec = seq(100,300,by=100)
+runtime = double(length(pvec))
+runtime.fast = double(length(pvec))
 j = 1
-for(p in plist){
+for(p in pvec){
   
   set.seed(1)
   data = simdata_scale(n,p)
   Y = data$Y
   X = data$X
-  out = microbenchmark(drawbeta(Y,X,FALSE),times=ntimes)
-  out.fast = microbenchmark(drawbeta(Y,X,TRUE),times=ntimes)
+  out = microbenchmark(drawbeta(Y,X,FALSE), times=ntimes, setup=set.seed(1))
+  out.fast = microbenchmark(drawbeta(Y,X,TRUE), times=ntimes, setup=set.seed(1))
   
   runtime[j] = mean(out$time)*1e-9
   runtime.fast[j] = mean(out.fast$time)*1e-9
@@ -52,13 +52,18 @@ for(p in plist){
   j = j+1
 }
 
-df = data.frame(p=rep(plist,times=2),
+beta1 = drawbeta(Y,X,FALSE)
+beta2 = drawbeta(Y,X,TRUE)
+abs(beta1-beta2)<1e-5
+
+df = data.frame(p=rep(pvec,times=2),
                 runtime=c(runtime,runtime.fast),
-                method=rep(c("standard","fast"),each=length(plist)))
+                method=rep(c("standard","fast"),each=length(pvec)))
 ggplot(df,aes(x=p,y=log(runtime),group=method)) +
   geom_line(aes(color=method, linetype=method)) +
-  scale_x_continuous(breaks=plist) +
+  scale_x_continuous(breaks=pvec) +
   geom_point(aes(fill=method, shape=method, color=method), size=2, stroke=1) + 
   labs(x="\n number of products (p)",y="time per iteration\n (in log seconds)\n") +
+  ylim(-4,4) +
   theme_minimal()
-dev.copy2pdf(file="/Users/adamsmith/Dropbox/Research/Hierarchical Shrinkage/paper/figures/scalability.pdf",width=7,height=4)
+# dev.copy2pdf(file="/Users/adamsmith/Dropbox/Research/Hierarchical Shrinkage/paper/figures/scalability.pdf",width=7,height=4)

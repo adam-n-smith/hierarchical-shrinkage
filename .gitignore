@@ -15,8 +15,7 @@
 build/*
 
 # saved model objects
-empirical analysis/output/*
-simulation/output/*
+analysis/output/*
 
 # miscellaneous
 .DS_Store

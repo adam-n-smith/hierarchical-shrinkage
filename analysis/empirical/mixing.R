@@ -13,11 +13,13 @@ getacf = function(models,lags,quantiles,burn,wchpar){
     str_replace(.,"\\.","\n")
   
   # storage
+  R = nrow(models[[i]]$betadraws[-(1:burn),])
+  lags = lags[lags<R]
   out = array(dim=c(m,length(quantiles),length(lags)), 
               dimnames=list(model=model_names,quantile=quantiles,lag=lags))
   
   # start loop over models
-  pb = txtProgressBar(min=1, max=m, initial=1,style=3) 
+  pb = txtProgressBar(min=0, max=m, initial=1,style=3) 
   for(i in 1:m){
     
     #  format draws (check if parameter is beta or indices for theta)
@@ -46,11 +48,10 @@ getacf = function(models,lags,quantiles,burn,wchpar){
   
 }
 
-
 models = mget(ls()[str_detect(ls(),"out.")])
 
 end = Mcmc$R/Mcmc$keep
-burn = Mcmc$burn_pct*end
+burn = 0.5*end
 quantiles = c(0.1,0.5,0.9)
 lags = seq(0,50,by=1)
 colors = RColorBrewer::brewer.pal(8,"Blues")[c(4,6,8)]
@@ -60,7 +61,7 @@ acf.theta.top = getacf(models,lags,quantiles,burn,wchpar=1:npar[1])
 acf.theta.top %>%
   ggplot(aes(x=lag,y=acf,group=quantile)) +
   geom_line(aes(color=quantile)) +
-  ylim(-0.2,1) +
+  ylim(min(acf.theta.top$acf),1) +
   facet_wrap(vars(model)) +
   scale_color_manual(values=colors) +
   theme_minimal()
@@ -70,7 +71,7 @@ acf.theta.mid = getacf(models,lags,quantiles,burn,wchpar=(npar[1]+1):cumsum(npar
 acf.theta.mid %>%  
   ggplot(aes(x=lag,y=acf,group=quantile)) +
   geom_line(aes(color=quantile)) +
-  ylim(-0.2,1) +
+  ylim(min(acf.theta.mid$acf),1) +
   facet_wrap(vars(model)) +
   scale_color_manual(values=colors) +
   theme_minimal()
@@ -81,8 +82,7 @@ acf.beta %>%
   mutate(quantile=as.character(quantile)) %>%
   ggplot(aes(x=lag,y=acf,group=quantile,color=quantile)) +
   geom_line(aes(color=quantile)) +
-  ylim(-0.2,1) +
-  # scale_colour_manual(palette="Blues") +
+  ylim(min(acf.beta$acf),1) +
   scale_color_brewer(palette = "Blues") +
   facet_wrap(vars(model)) +
   theme_minimal()

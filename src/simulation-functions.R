@@ -109,14 +109,15 @@ simdata = function(n,p,d,settings){
 }
 
 # simulate a batch of data sets to estimate in parallel
-simdata_batch = function(pvec,nrep,type,prop_sparse,transform=NULL){
+simdata_batch = function(n,p,rep,type,prop_sparse,transform=NULL){
   
   d = 1
   
   # generate data
   data = NULL
-  j = 1
-  for(p in p_vec) {
+
+  # tree for DGP
+  if(type=="hierarchical"){
     
     tree = matrix(c(rep(1:5,each=p/5),
                     rep(1:10,each=p/10),
@@ -128,45 +129,44 @@ simdata_batch = function(pvec,nrep,type,prop_sparse,transform=NULL){
     npar = treeindex$npar
     npar_own = treeindex$npar_own
     
-    # tree for DGP
+    settings = list(
+      type = type,
+      tree = tree,
+      counts = counts,
+      list = list,
+      list_own = list_own,
+      npar = npar,
+      npar_own = npar_own,
+      prop_sparse = prop_sparse,
+      transform = transform
+    )
+    
+  }
+  
+  if(type=="sparse"){
+    settings = list(
+      type = type,
+      prop_sparse = prop_sparse
+    )
+  }
+  
+  data = list(rep)
+  tmp = NULL
+  for(b in 1:rep){
+    
+    # simulate data
+    data[[b]] = simdata(n,p,d,settings)
+    
     if(type=="hierarchical"){
-      settings = list(
-        type = type,
-        tree = tree,
-        counts = counts,
-        list = list,
-        list_own = list_own,
-        npar = npar,
-        npar_own = npar_own,
-        prop_sparse = prop_sparse,
-        transform = transform
-      )
-    }
-    
-    if(type=="sparse"){
-      settings = list(
-        type = type,
-        prop_sparse = prop_sparse
-      )
-    }
-    
-    data[j] = list(nrep)
-    tmp = NULL
-    for(b in 1:nrep){
       
-      # simulate data
-      tmp[[b]] = simdata(n,p,d,settings)
-      tmp[[b]]$npar = npar
-      tmp[[b]]$npar_own = npar_own
-      tmp[[b]]$tree = tree
-      tmp[[b]]$list = list
-      tmp[[b]]$list_own = list_own
-      tmp[[b]]$childrencounts = counts
+      data[[b]]$npar = npar
+      data[[b]]$npar_own = npar_own
+      data[[b]]$tree = tree
+      data[[b]]$list = list
+      data[[b]]$list_own = list_own
+      data[[b]]$childrencounts = counts
       
     }
-    
-    data[[j]] = tmp
-    j = j+1 
     
   }
   
@@ -174,36 +174,54 @@ simdata_batch = function(pvec,nrep,type,prop_sparse,transform=NULL){
   
 }
 
+
 # fit models on batch data in parallel
-fit_parallel = function(DataList,Mcmc,p_vec,models,dgp){
+fit_parallel = function(DataList,Prior,Mcmc,p,models,dgp,tree=NULL){
   
-  
-  nrep = length(DataList[[1]])
+  rep = length(DataList)
   end = Mcmc$R/Mcmc$keep
   burn = Mcmc$burn_pct*end
   
+  # true tree
+  tree_dgp = data[[which(str_detect(names(data),"dense"))[1]]][[1]]$tree
+  childrencounts_dgp = countchildren_cpp(tree_dgp)
+  treeindex = createindex(tree_dgp)
+  index_dgp = treeindex$index
+  list_dgp = treeindex$list
+  list_own_dgp = treeindex$list_own
+  npar_dgp = treeindex$npar
+  npar_own_dgp = treeindex$npar_own
+  L_dgp = ncol(tree_dgp)
+  
+  # misspecified tree
+  tree_mis = tree_dgp
+  for(k in 1:(ncol(tree_mis)-1)){
+    K = max(tree_mis[,k])
+    tree_mis[,k] = rep(1:K,times=p/K)
+  }
+  childrencounts_mis = countchildren_cpp(tree_mis)
+  treeindex = createindex(tree_mis)
+  index_mis = treeindex$index
+  list_mis = treeindex$list
+  list_own_mis = treeindex$list_own
+  npar_mis = treeindex$npar
+  npar_own_mis = treeindex$npar_own
+  L_mis = ncol(tree_mis)
+  
+  # start estimation loop
+  pb = txtProgressBar(max=rep*nrow(models), style=3)
+  progress = function(itr) setTxtProgressBar(pb, itr)
+  opts = list(progress=progress)
   itime = proc.time()[3]
-  out = foreach(j=1:length(p_vec), .combine='cbind') %:% 
-    foreach(b=1:nrep, .combine='rbind') %:% 
+  out = foreach(b=1:rep, .combine='rbind') %:% 
     foreach(m=1:nrow(models), .combine='rbind', 
             .packages=c("Rcpp","RcppArmadillo","here"),
             .options.snow=opts) %dopar% { 
               
-              sourceCpp(here("functions","shrinkage_mcmc.cpp"))
-
-              data = DataList[[j]][[b]]
-              p = p_vec[j]
-
-              # Prior
-              Prior = list(
-                thetabar_own=0,
-                thetabar_cross=0,
-                Aphi=.01*diag(p),
-                phibar=double(p),
-                a=5,
-                b=5
-              )
+              sourceCpp(here("src","shrinkage-mcmc.cpp"))
               
+              data = DataList[[b]]
+
               # fit model
               if(models[m,2]=="sparse"){
                 Data = list(
@@ -214,38 +232,55 @@ fit_parallel = function(DataList,Mcmc,p_vec,models,dgp){
                 fit = rSURshrinkage(Data,Prior,Mcmc,Shrinkage=models[m,1],print=FALSE)
               }
               else{
-                Data = list(
-                  Y=data$Y,
-                  X=data$X,
-                  Clist=data$Clist,
-                  tree=data$tree,
-                  childrencounts=data$childrencounts,
-                  list=data$list,
-                  list_own=data$list_own,
-                  npar=data$npar,
-                  npar_own=data$npar_own
-                )
+                
+                if(is.null(tree)){
+                  Data = list(
+                    Y=data$Y,
+                    X=data$X,
+                    Clist=data$Clist,
+                    tree=tree_dgp,
+                    childrencounts=childrencounts_dgp,
+                    list=list_dgp,
+                    list_own=list_own_dgp,
+                    npar=npar_dgp,
+                    npar_own=npar_own_dgp
+                  )
+                }
+                else if(tree=="misspecified"){
+                  Data = list(
+                    Y=data$Y,
+                    X=data$X,
+                    Clist=data$Clist,
+                    tree=tree_mis,
+                    childrencounts=childrencounts_mis,
+                    list=list_mis,
+                    list_own=list_own_mis,
+                    npar=npar_mis,
+                    npar_own=npar_own_mis
+                  )
+                }
+                
                 fit = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product=models[m,1],group=models[m,2]),
                                         print=FALSE)
               }
-
+              
               # compute rmse
               Brmse = double(end-burn)
               for(r in 1:(end-burn)){
                 B = matrix(fit$betadraws[burn+r,],p,p)
-                Brmse[r] = sqrt(mean((data$B - B)^2))
+                Brmse[r] = sqrt(mean((data$B-B)^2))
               }
               rmse = mean(Brmse)
               
               # compute share of correct signs
               B = apply(fit$betadraws[burn:end,],2,mean)
-              signs = mean(sign(B)==sign(data$B))
-
+              sign = mean(sign(data$B)==sign(B))
+              
               # save
-              c(rmse,signs)
+              c(rmse,sign)
             }
   
-  colnames(out) = c(paste0("rmse_",p_vec,"_",dgp),paste0("signs_",p_vec,"_",dgp))
+  colnames(out) = c(paste0("rmse_",p,"_",dgp),paste0("signs_",p,"_",dgp))
   
   ctime = proc.time()[3]
   cat("\n Total Time:",round((ctime - itime)/60,2),"minutes",fill = TRUE)

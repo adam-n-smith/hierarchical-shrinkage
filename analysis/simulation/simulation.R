@@ -1,16 +1,20 @@
 library(tidyverse)
+library(reshape2)
 library(Rcpp)
 library(RcppArmadillo)
 library(here)
-library(reshape2)
 
-source(here("functions","simulation_functions.R"))
-source(here("functions","shrinkage_functions.R"))
-sourceCpp(here("functions","shrinkage_mcmc.cpp"))
+source(here("src","simulation-functions.R"))
+source(here("src","shrinkage-functions.R"))
+sourceCpp(here("src","shrinkage-mcmc.cpp"))
+
+# ---------------------------------------------------------------------------- #
+# generate data
+# ---------------------------------------------------------------------------- #
 
 # dimensions
 n = 50
-p = 50
+p = 20
 d = 1
 
 # tree
@@ -26,28 +30,28 @@ npar = treeindex$npar
 npar_own = treeindex$npar_own
 L = ncol(tree)
 
-# simulate data
+# beta generated from hierarchical prior
 settings = list(
   type = "hierarchical",
   tree = tree,
-  counts = countchildren_cpp(tree),
-  list = treeindex$list,
-  npar = unlist(lapply(list,length)),
+  counts = childrencounts,
+  list = list,
+  npar = npar,
   # prop_sparse = c(0,0,0.9),
   # transform = TRUE
   prop_sparse = c(0,0,0),
   transform = FALSE
 )
-# settings = list(
-#   type = "sparse",
-#   prop_sparse = 0.75
-# )
+
+# sparse beta
+settings = list(
+  type = "sparse",
+  prop_sparse = 0.75
+)
+
+# simulate data
 set.seed(1)
 data = simdata(n,p,d,settings)
-# data$npar = npar
-# data$npar_own = npar_own
-# data$tree = tree
-# data$childrencounts = childrencounts
 
 # plot elasticities
 melt(data$B) %>%
@@ -64,27 +68,18 @@ melt(data$B) %>%
         axis.text.x=element_blank(),
         axis.text.y=element_blank())
 
-# plot centered elasticities
-melt(data$E) %>%
-  filter(Var1!=Var2) %>%
-  mutate(Var1=as.factor(Var1),
-         Var2=as.factor(Var2)) %>%
-  ggplot(aes(x=Var1,y=fct_rev(Var2),fill=value)) + 
-  geom_tile(color="white") + 
-  labs(x="",y="") +
-  scale_x_discrete(position = "top") +
-  scale_fill_gradient2(low="#F8766D",mid="white",high="#00BFC4") +
-  theme_minimal() +
-  theme(legend.position="none",
-        axis.text.x=element_blank(),
-        axis.text.y=element_blank())
+#
+# Pilist = list(L)
+# for(i in 1:L){
+#   Pi = matrix(0,p,max(tree[,i]))
+#   Pi[cbind(1:p,tree[,i])] = 1
+#   Pilist[[i]] = Pi
+# }
 
-Pilist = list(L)
-for(i in 1:L){
-  Pi = matrix(0,p,max(tree[,i]))
-  Pi[cbind(1:p,tree[,i])] = 1
-  Pilist[[i]] = Pi
-}
+
+# ---------------------------------------------------------------------------- #
+# estimation
+# ---------------------------------------------------------------------------- #
 
 # data
 Data = list(
@@ -97,19 +92,18 @@ Data = list(
   list = treeindex$list, 
   list_own = treeindex$list_own,
   npar = treeindex$npar,
-  npar_own = treeindex$npar_own,
-  Pilist = Pilist
+  npar_own = treeindex$npar_own
 )
 
 # priors
 Prior = list(
-  thetabar_own=0, 
-  thetabar_cross=0, 
-  taubarii=10,
-  Aphi=.01*diag(p), 
-  phibar=double(p),
-  a=5, 
-  b=5
+  thetabar_own = 0, 
+  thetabar_cross = 0, 
+  taubarii = 10,
+  Aphi = .01*diag(p), 
+  phibar = double(p),
+  a = 5, 
+  b = 5
 )
 
 # mcmc
@@ -120,64 +114,61 @@ Mcmc = list(
   burn_pct = 0.5
 )
 
-sourceCpp(here("functions","shrinkage_mcmc.cpp"))
+# sparse
+out = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="ridge",print=TRUE)
+out = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="lasso",print=TRUE)
+out = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="horseshoe",print=TRUE)
 
+# hierarchical (theta-ridge)
 out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="ridge",group="ridge"),print=TRUE)
 out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="lasso",group="ridge"),print=TRUE)
 out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="horseshoe",group="ridge"),print=TRUE)
 
+# hierarchical (theta-horseshoe)
 out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="ridge",group="horseshoe"),print=TRUE)
 out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="lasso",group="horseshoe"),print=TRUE)
 out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="horseshoe",group="horseshoe"),print=TRUE)
 
+# ---------------------------------------------------------------------------- #
+# summary
+# ---------------------------------------------------------------------------- #
+
 end = Mcmc$R/Mcmc$keep
 burn = Mcmc$burn_pct*end
 
-matplot(out$thetadraws[,(npar[1]+1):cumsum(npar)[2]],type="l",col=rainbow(npar[2]))
-abline(h=data$thetalist[[2]],col=rainbow(npar[2]))
-plot(data$thetalist[[2]],apply(out$thetadraws[burn:end,(npar[1]+1):cumsum(npar)[2]],2,mean),xlab="true",ylab="estimated",col=diag(10)+1,pch=16)
-abline(0,1)
-boxplot(out$thetadraws[burn:end,(npar[1]+1):cumsum(npar)[2]])
-points(data$thetalist[[2]],col=2,pch=16)
-
-# compute rmse
-Brmse = double(end)
-for(r in 1:end){
-  B = matrix(out$betadraws[r,],p,p)
+# estimation RMSE
+Brmse = double(end-burn)
+for(r in 1:(end-burn)){
+  B = matrix(out$betadraws[burn+r,],p,p)
   Brmse[r] = sqrt(mean((data$B - B)^2))
 }
-plot(Brmse,ylim=c(0,.7))
-mean(Brmse[burn:end])
+mean(Brmse)
 
-# theta (own effects)
+# theta-own
 matplot(out$thetaowndraws[,1:npar_own[1]],type="l",col=rainbow(npar_own[1]))
 matplot(out$thetaowndraws[,(npar_own[1]+1):cumsum(npar_own)[2]],type="l",col=rainbow(npar_own[2]))
-matplot(out$thetaowndraws[,(cumsum(npar_own)[2]+1):cumsum(npar_own)[3]],type="l",col=rainbow(p))
-abline(h=diag(data$B),col=rainbow(p))
 
-matplot(out$tauowndraws,type="l")
-
-# theta (highest level)
+# theta-cross (highest level)
 matplot(out$thetadraws[,1:npar[1]],type="l",col=rainbow(npar[1]))
 abline(h=data$thetalist[[1]],col=rainbow(npar[1]))
 plot(data$thetalist[[1]],apply(out$thetadraws[burn:end,1:npar[1]],2,mean),
      xlab="true",ylab="estimated",xlim=c(-3,3),ylim=c(-3,3))
 abline(0,1)
 
-# theta (middle level)
+# theta-cross (middle level)
 matplot(out$thetadraws[,(npar[1]+1):cumsum(npar)[2]],type="l",col=rainbow(npar[2]))
 abline(h=data$thetalist[[2]],col=rainbow(npar[2]))
 plot(data$thetalist[[2]],apply(out$thetadraws[burn:end,(npar[1]+1):cumsum(npar)[2]],2,mean),xlab="true",ylab="estimated")
 abline(0,1)
 
-# theta (lowest level)
+# beta
 matplot(out$betadraws,type="l",col=rainbow(p^2))
 abline(h=data$B,col=rainbow(p^2))
 plot(data$thetalist[[3]],apply(out$thetadraws[burn:end,(cumsum(npar)[2]+1):cumsum(npar)[3]],2,mean),xlab="true",ylab="estimated")
 abline(0,1)
 
-# check share of correct signs
-mean(sign(data$thetalist[[3]]) == sign(apply(out$thetadraws[burn:end,(cumsum(npar)[2]+1):cumsum(npar)[3]],2,mean)))
+# check share of correct signs for beta
+mean(sign(data$B) == sign(apply(out$betadraws[burn:end,],2,mean)))
 
 # tau
 matplot(sqrt(out$taudraws),type="l",col=1:L)
@@ -197,3 +188,5 @@ tmp = melt(Kappa)
 # phi
 matplot(out$phidraws,type="l",col=1:length(data$phivec))
 abline(h=data$phivec,col=1:length(data$phivec))
+plot(data$phivec,apply(out$phidraws[burn:end,],2,mean),xlab="true",ylab="estimated")
+abline(0,1)
