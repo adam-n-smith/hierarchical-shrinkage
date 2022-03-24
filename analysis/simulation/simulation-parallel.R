@@ -25,10 +25,6 @@ data = list(
   sparse = simdata_batch(n,p,rep,"sparse",prop_sparse=0.75)
 )
 
-# ------------------------------------------------------------- #
-# Simulation 1: n=50, p=100, rep=25
-# ------------------------------------------------------------- #
-
 # models to fit
 models = matrix(c("ridge","sparse",
                   "lasso","sparse",
@@ -42,8 +38,12 @@ models = matrix(c("ridge","sparse",
                 ncol=2,byrow=TRUE)
 
 # initialize clusters
-cl = makeSOCKcluster(6)
+cl = makeSOCKcluster(4)
 registerDoSNOW(cl)
+
+# ------------------------------------------------------------- #
+# Simulation 1: n=50, p=100, rep=25
+# ------------------------------------------------------------- #
 
 # Prior
 Prior = list(
@@ -65,16 +65,11 @@ Mcmc = list(
 )
 
 # fit models across all dgps
-dgps = c("dense.dense","dense.transform","sparse.sparse","sparse")
-fit = NULL
-for(dgp in dgps){
-  print(dgp)
-  tmp = fit_parallel(data[[which(names(data)==dgp)]],Prior,Mcmc,p,models,dgp=dgp)
-  fit = cbind(fit,tmp)
-}
-
-# stop
-stopCluster(cl)
+out1 = fit_parallel(data$dense.dense,Prior,Mcmc,models,dgp="dense.dense")
+out2 = fit_parallel(data$dense.transform,Prior,Mcmc,models,dgp="dense.transform")
+out3 = fit_parallel(data$sparse.sparse,Prior,Mcmc,models,dgp="sparse.sparse")
+out4 = fit_parallel(data$sparse,Prior,Mcmc,models,dgp="sparse",tree=data$dense.dense[[1]]$tree)
+fit = cbind(out1,out2,out3,out4)
 
 # print results
 out = data.frame(fit) %>%
@@ -102,14 +97,17 @@ print(xtable(out),include.rownames=FALSE, sanitize.text.function=identity)
 # Simulation 2: n=50, p=100, rep=25, misspecified tree
 # ------------------------------------------------------------- #
 
-# fit models across all dgps
-fit_mis = NULL
-dgps = c("dense.dense","dense.transform","sparse.sparse")
-for(dgp in dgps){
-  print(dgp)
-  tmp = fit_parallel(data[[which(names(data)==dgp)]],Prior,Mcmc,p,models,dgp=dgp,tree="misspecified")
-  fit_mis = cbind(fit_mis,tmp)
+tree_mis = data$dense.dense[[1]]$tree
+for(k in 1:(ncol(tree_mis)-1)){
+  K = max(tree_mis[,k])
+  tree_mis[,k] = rep(1:K,times=p/K)
 }
+
+# fit models across all dgps
+outmis1 = fit_parallel(data$dense.dense,Prior,Mcmc,models,dgp="dense.dense",tree=tree_mis)
+outmis2 = fit_parallel(data$dense.transform,Prior,Mcmc,models,dgp="dense.transform",tree=tree_mis)
+outmis3 = fit_parallel(data$sparse.sparse,Prior,Mcmc,models,dgp="sparse.sparse",tree=tree_mis)
+fit_mis = cbind(outmis1,outmis2,outmis3)
 
 # print results
 out_mis = data.frame(fit_mis) %>%
@@ -160,20 +158,18 @@ Prior = list(
 
 # Mcmc
 Mcmc = list(
-  R = 5000,
+  R = 2000,
   initial_run = 100,
   keep = 1,
   burn_pct = 0.75
 )
 
 # fit models across all dgps
-fit_big = NULL
-dgps = c("dense.dense","dense.transform","sparse.sparse")
-for(dgp in dgps){
-  print(dgp)
-  tmp = fit_parallel(data[[which(names(data)==dgp)]],Prior,Mcmc,p,models,dgp=dgp,tree="misspecified")
-  fit_big = cbind(fit_big,tmp)
-}
+outbig1 = fit_parallel(data_big$dense.dense,Prior,Mcmc,models,dgp="dense.dense")
+outbig2 = fit_parallel(data_big$dense.transform,Prior,Mcmc,models,dgp="dense.transform")
+outbig3 = fit_parallel(data_big$sparse.sparse,Prior,Mcmc,models,dgp="sparse.sparse")
+outbig4 = fit_parallel(data_big$sparse,Prior,Mcmc,models,dgp="sparse",tree=data_big$dense.dense[[1]]$tree)
+fit_big = cbind(outbig1,outbig2,outbig3,outbig4)
 
 # print results
 out_big = data.frame(fit_big) %>%
@@ -194,6 +190,9 @@ out_big = data.frame(fit_big) %>%
   mutate(across(starts_with("rmse_"),function(x)ifelse(x==min(x),paste("\\bf",sprintf("%.3f",x)),sprintf("%.3f",x))))
 
 out_big
+
+# stop
+# stopCluster(cl)
 
 # ------------------------------------------------------------- #
 # plot elasticity matrices
