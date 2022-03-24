@@ -184,36 +184,21 @@ vec drawbeta(mat const& Y, mat const& X, bool fast){
   vec betabar = zeros(p*p);
   
   if(fast){
+    
     for(int i=0;i<p;i++){
-      
+
       // precompute
-      mat Lam = diagmat(lamstar(span(p*i,p*i+p-1)));
-      mat XLamXp = X * Lam * trans(X);
-      mat irootXt = solve(trimatu(chol(XLamXp + eye(n,n))),eye(n,n));
+      mat LamXp = diagmat(lamstar(span(p*i,p*i+p-1))) * trans(X);
+      mat irootXt = solve(trimatu(chol(X*LamXp + eye(n,n))),eye(n,n));
 
       // Ystar
       vec ytstar = vectorise(Y.col(i));
 
       // beta (conditional)
-      vec u = betabar(span(p*i,p*i+p-1)) + sqrt(lamstar(span(p*i,p*i+p-1))) % randn<vec>(p);
-      vec v = X * u + randn<vec>(n);
-      vec w = (irootXt*trans(irootXt)) * (ytstar - v);
-      beta(span(p*i,p*i+p-1)) = u + diagmat(lamstar(span(p*i,p*i+p-1))) * trans(X) * w;
-      
-      // // precompute
-      // mat LamXp = diagmat(lamstar(span(p*i,p*i+p-1))) * trans(X);
-      // mat irootXt = solve(trimatu(chol(X * LamXp + eye(n,n))),eye(n,n));
-      // // mat irootXt = solve(trimatu(chol(dot(X,LamXp) + eye(n,n))),eye(n,n));
-      // 
-      // // Ystar
-      // vec ytstar = vectorise(Y.col(i));
-      // 
-      // // beta (conditional)
-      // vec u = betabar(span(p*i,p*i+p-1)) + sqrt(lamstar(span(p*i,p*i+p-1))) % randn<vec>(p);
-      // vec v = X * u + randn<vec>(n);
-      // vec w = (irootXt*trans(irootXt)) * (ytstar - v);
-      // beta(span(p*i,p*i+p-1)) = u +  LamXp * w;
-      
+      vec u = betabar(span(p*i,p*i+p-1)) + sqrt(lamstar(span(p*i,p*i+p-1)))%randn<vec>(p);
+      vec v = X*u + randn<vec>(n);
+      vec w = (irootXt*trans(irootXt))*(ytstar - v);
+      beta(span(p*i,p*i+p-1)) = u + LamXp*w;
 
     }
     
@@ -224,14 +209,15 @@ vec drawbeta(mat const& Y, mat const& X, bool fast){
 
       // precompute
       mat Lam = diagmat(lamstar(span(p*i,p*i+p-1)));
-      mat iroot = solve(trimatu(chol(trans(X) * X + Lam)),eye(p,p));
+      mat iroot = solve(trimatu(chol(trans(X)*X + Lam)),eye(p,p));
       
       // Ystar
       vec ytstar = vectorise(Y.col(i));
       
       // beta (conditional)
-      beta(span(p*i,p*i+p-1)) = (iroot*trans(iroot))*(trans(X)*ytstar + Lam*betabar(span(p*i,p*i+p-1)));
-      
+      vec betatilde = (iroot*trans(iroot))*(trans(X)*ytstar + Lam*betabar(span(p*i,p*i+p-1)));
+      beta(span(p*i,p*i+p-1)) = betatilde + iroot*randn<vec>(p);
+
     }
     
   }
@@ -266,7 +252,7 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
   // initialize
   int rep, mkeep;
   vec ytstar, phitilde, levelsums, diffsums, u, v, vari, w, sums, rate, scale;
-  mat Ystar, Xt, CtpCt, Lam, Xpy, XtLamXtp, Lamibetabar, irootX, irootXt, irootC, Ct, projmat, CIprojCp;
+  mat Ystar, Xt, CtpCt, LamXtp, Xpy, XtLamXtp, Lamibetabar, irootX, irootXt, irootC, Ct, projmat, CIprojCp;
   mat XpX = trans(X)*X;
   vec nphi = zeros(p);
   mat Cstar;
@@ -326,8 +312,8 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
       
       // precompute
       Xt = X/sqrt(sigmasq(i));
-      Lam = diagmat(lamstar(span(p*i,p*i+p-1)));
-      XtLamXtp = Xt * Lam * trans(Xt);
+      LamXtp = diagmat(lamstar(span(p*i,p*i+p-1))) *  trans(Xt);
+      XtLamXtp = Xt * LamXtp;
       
       // phi (marginalizing over beta)
       // first use Woodbury to rewrite inverse as (Xt'Xt + Lam^-1)^-1 = Lam - LamXt'(I + XtLamXt')^-1XtLam
@@ -351,7 +337,7 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
       u = betabar(span(p*i,p*i+p-1)) + sqrt(lamstar(span(p*i,p*i+p-1))) % randn<vec>(p);
       v = Xt * u + randn<vec>(n);
       w = (irootXt*trans(irootXt)) * (ytstar - v);
-      beta(span(p*i,p*i+p-1)) = u + diagmat(lamstar(span(p*i,p*i+p-1))) * trans(Xt) * w;
+      beta(span(p*i,p*i+p-1)) = u + LamXtp * w;
       
       // sigmasq
       vec E = Y.col(i) - X*beta(span(p*i,p*i+p-1)) - C*phi(span(cumnphi(i)-nphi(i),cumnphi(i)-1));
@@ -496,7 +482,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
   vec ytstar, phitilde, Psi_Lmone, Psi_ellmone, Psi_ell, ellpone_sums, ellmone, denom, counts,
   levelsums, diffsums, v_kl, thetatilde, theta, mean, u, v, vari, w, sums, rate, scale,
   lambda, xilambda, lambda_own, xilambda_own, mutilde;
-  mat Ystar, Xt, CtpCt, Lam, Xpy, XtLamXtp, Lamibetabar, irootX, irootXt, irootC, Ct, projmat, CIprojCp;
+  mat Ystar, Xt, CtpCt, LamXtp, Xpy, XtLamXtp, Lamibetabar, irootX, irootXt, irootC, Ct, projmat, CIprojCp;
   mat XpX = trans(X)*X;
   vec nphi = zeros(p);
   mat Cstar;
@@ -746,8 +732,8 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
 
       // precompute
       Xt = X/sqrt(sigmasq(i));
-      Lam = diagmat(lamstar(span(p*i,p*i+p-1)));
-      XtLamXtp = Xt*Lam*trans(Xt);
+      LamXtp = diagmat(lamstar(span(p*i,p*i+p-1)))*trans(Xt);
+      XtLamXtp = Xt*LamXtp;
       Ystar = Y.col(i) - X*betabar(span(p*i,p*i+p-1));
 
       // phi (marginalizing over beta)
@@ -772,7 +758,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
       u = sqrt(lamstar(span(p*i,p*i+p-1))) % randn<vec>(p);
       v = Xt * u + randn<vec>(n);
       w = (irootXt*trans(irootXt)) * (ytstar - v);
-      xi(span(p*i,p*i+p-1)) = u + diagmat(lamstar(span(p*i,p*i+p-1))) * trans(Xt) * w;
+      xi(span(p*i,p*i+p-1)) = u + LamXtp * w;
       beta(span(p*i,p*i+p-1)) = betabar(span(p*i,p*i+p-1)) + xi(span(p*i,p*i+p-1));
 
       // sigmasq
