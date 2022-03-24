@@ -176,38 +176,26 @@ simdata_batch = function(n,p,rep,type,prop_sparse,transform=NULL){
 
 
 # fit models on batch data in parallel
-fit_parallel = function(DataList,Prior,Mcmc,p,models,dgp,tree=NULL){
+fit_parallel = function(DataList,Prior,Mcmc,models,dgp,tree=NULL){
   
   rep = length(DataList)
   end = Mcmc$R/Mcmc$keep
   burn = Mcmc$burn_pct*end
   
-  # true tree
-  tree_dgp = data[[which(str_detect(names(data),"dense"))[1]]][[1]]$tree
-  childrencounts_dgp = countchildren_cpp(tree_dgp)
-  treeindex = createindex(tree_dgp)
-  index_dgp = treeindex$index
-  list_dgp = treeindex$list
-  list_own_dgp = treeindex$list_own
-  npar_dgp = treeindex$npar
-  npar_own_dgp = treeindex$npar_own
-  L_dgp = ncol(tree_dgp)
-  
-  # misspecified tree
-  tree_mis = tree_dgp
-  for(k in 1:(ncol(tree_mis)-1)){
-    K = max(tree_mis[,k])
-    tree_mis[,k] = rep(1:K,times=p/K)
+  # tree
+  if(is.null(tree)){
+    tree = DataList[[1]]$tree
   }
-  childrencounts_mis = countchildren_cpp(tree_mis)
-  treeindex = createindex(tree_mis)
-  index_mis = treeindex$index
-  list_mis = treeindex$list
-  list_own_mis = treeindex$list_own
-  npar_mis = treeindex$npar
-  npar_own_mis = treeindex$npar_own
-  L_mis = ncol(tree_mis)
-  
+  childrencounts = countchildren_cpp(tree)
+  treeindex = createindex(tree)
+  index = treeindex$index
+  list = treeindex$list
+  list_own = treeindex$list_own
+  npar = treeindex$npar
+  npar_own = treeindex$npar_own
+  L = ncol(tree)
+  p = nrow(tree)
+
   # start estimation loop
   pb = txtProgressBar(max=rep*nrow(models), style=3)
   progress = function(itr) setTxtProgressBar(pb, itr)
@@ -233,32 +221,17 @@ fit_parallel = function(DataList,Prior,Mcmc,p,models,dgp,tree=NULL){
               }
               else{
                 
-                if(is.null(tree)){
-                  Data = list(
-                    Y=data$Y,
-                    X=data$X,
-                    Clist=data$Clist,
-                    tree=tree_dgp,
-                    childrencounts=childrencounts_dgp,
-                    list=list_dgp,
-                    list_own=list_own_dgp,
-                    npar=npar_dgp,
-                    npar_own=npar_own_dgp
-                  )
-                }
-                else if(tree=="misspecified"){
-                  Data = list(
-                    Y=data$Y,
-                    X=data$X,
-                    Clist=data$Clist,
-                    tree=tree_mis,
-                    childrencounts=childrencounts_mis,
-                    list=list_mis,
-                    list_own=list_own_mis,
-                    npar=npar_mis,
-                    npar_own=npar_own_mis
-                  )
-                }
+                Data = list(
+                  Y=data$Y,
+                  X=data$X,
+                  Clist=data$Clist,
+                  tree=tree,
+                  childrencounts=childrencounts,
+                  list=list,
+                  list_own=list_own,
+                  npar=npar,
+                  npar_own=npar_own
+                )
                 
                 fit = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product=models[m,1],group=models[m,2]),
                                         print=FALSE)
