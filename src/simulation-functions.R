@@ -247,7 +247,7 @@ fit_parallel = function(DataList,Prior,Mcmc,models,dgp,tree=NULL){
               
               # compute share of correct signs
               B = apply(fit$betadraws[burn:end,],2,mean)
-              sign = mean(sign(data$B)==sign(B))
+              sign = mean(sign(data$B[data$B!=0])==sign(B[as.vector(data$B!=0)]))
               
               # save
               c(rmse,sign)
