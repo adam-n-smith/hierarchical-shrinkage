@@ -99,6 +99,17 @@ elasticities %>%
 ggsave(filename="/Users/adamsmith/Dropbox/Research/Hierarchical Shrinkage/paper/figures/elasticities-own.png",
        height=5,width=7)
 
+# effects of hierarchical shrinkage
+sds = data.frame(id=1:p^2,sd=rep(cut(apply(Data$X,2,sd),4),each=p))
+elasticities %>%
+  left_join(sds) %>%
+  filter(!own) %>%
+  select(id,model,mean,sd) %>%
+  pivot_wider(names_from=model,values_from=mean) %>%
+  ggplot(aes(x=sparse_ridge,y=ridge_ridge)) +
+  geom_point(aes(color=sd)) +
+  facet_wrap(vars(sd))
+
 # pairwise own
 elasticities %>%
   filter(own) %>%
