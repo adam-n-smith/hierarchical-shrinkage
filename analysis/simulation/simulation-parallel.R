@@ -65,11 +65,11 @@ Mcmc = list(
 )
 
 # fit models across all dgps
-out1 = fit_parallel(data$dense.dense,Prior,Mcmc,models,dgp="dense.dense")
-out2 = fit_parallel(data$dense.transform,Prior,Mcmc,models,dgp="dense.transform")
-out3 = fit_parallel(data$sparse.sparse,Prior,Mcmc,models,dgp="sparse.sparse")
-out4 = fit_parallel(data$sparse,Prior,Mcmc,models,dgp="sparse",tree=data$dense.dense[[1]]$tree)
-fit = cbind(out1,out2,out3,out4)
+fit1 = fit_parallel(data$dense.dense,Prior,Mcmc,models,dgp="dense.dense")
+fit2 = fit_parallel(data$dense.transform,Prior,Mcmc,models,dgp="dense.transform")
+fit3 = fit_parallel(data$sparse.sparse,Prior,Mcmc,models,dgp="sparse.sparse")
+fit4 = fit_parallel(data$sparse,Prior,Mcmc,models,dgp="sparse",tree=data$dense.dense[[1]]$tree)
+fit = cbind(fit1,fit2,fit3,fit4)
 
 # print results
 out = data.frame(fit) %>%
@@ -91,7 +91,7 @@ out = data.frame(fit) %>%
 
 out
 
-print(xtable(out),include.rownames=FALSE, sanitize.text.function=identity)
+# print(xtable(out),include.rownames=FALSE, sanitize.text.function=identity)
 
 # ------------------------------------------------------------- #
 # Simulation 2: n=50, p=100, rep=25, misspecified tree
@@ -104,13 +104,13 @@ for(k in 1:(ncol(tree_mis)-1)){
 }
 
 # fit models across all dgps
-outmis1 = fit_parallel(data$dense.dense,Prior,Mcmc,models,dgp="dense.dense",tree=tree_mis)
-outmis2 = fit_parallel(data$dense.transform,Prior,Mcmc,models,dgp="dense.transform",tree=tree_mis)
-outmis3 = fit_parallel(data$sparse.sparse,Prior,Mcmc,models,dgp="sparse.sparse",tree=tree_mis)
-fit_mis = cbind(outmis1,outmis2,outmis3)
+fitmis1 = fit_parallel(data$dense.dense,Prior,Mcmc,models,dgp="dense.dense",tree=tree_mis)
+fitmis2 = fit_parallel(data$dense.transform,Prior,Mcmc,models,dgp="dense.transform",tree=tree_mis)
+fitmis3 = fit_parallel(data$sparse.sparse,Prior,Mcmc,models,dgp="sparse.sparse",tree=tree_mis)
+fitmis = cbind(fitmis1,fitmis2,fitmis3)
 
 # print results
-out_mis = data.frame(fit_mis) %>%
+out_mis = data.frame(fitmis) %>%
   # add model labels
   mutate(shrinkage = rep(paste0(to_any_case(models[,2],case="upper_camel"),"/",
                                 to_any_case(models[,1],case="upper_camel")),rep),
@@ -165,14 +165,14 @@ Mcmc = list(
 )
 
 # fit models across all dgps
-outbig1 = fit_parallel(data_big$dense.dense,Prior,Mcmc,models,dgp="dense.dense")
-outbig2 = fit_parallel(data_big$dense.transform,Prior,Mcmc,models,dgp="dense.transform")
-outbig3 = fit_parallel(data_big$sparse.sparse,Prior,Mcmc,models,dgp="sparse.sparse")
-outbig4 = fit_parallel(data_big$sparse,Prior,Mcmc,models,dgp="sparse",tree=data_big$dense.dense[[1]]$tree)
-fit_big = cbind(outbig1,outbig2,outbig3,outbig4)
+fitbig1 = fit_parallel(data_big$dense.dense,Prior,Mcmc,models,dgp="dense.dense")
+fitbig2 = fit_parallel(data_big$dense.transform,Prior,Mcmc,models,dgp="dense.transform")
+fitbig3 = fit_parallel(data_big$sparse.sparse,Prior,Mcmc,models,dgp="sparse.sparse")
+fitbig4 = fit_parallel(data_big$sparse,Prior,Mcmc,models,dgp="sparse",tree=data_big$dense.dense[[1]]$tree)
+fitbig = cbind(fitbig1,fitbig2,fitbig3,fitbig4)
 
 # print results
-out_big = data.frame(fit_big) %>%
+out_big = data.frame(fitbig) %>%
   # add model labels
   mutate(shrinkage = rep(paste0(to_any_case(models[,2],case="upper_camel"),"/",
                                 to_any_case(models[,1],case="upper_camel")),rep),
