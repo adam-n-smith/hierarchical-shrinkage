@@ -38,7 +38,8 @@ models = matrix(c("ridge","sparse",
                 ncol=2,byrow=TRUE)
 
 # initialize clusters
-cl = makeSOCKcluster(4)
+ncores = parallel::detectCores()
+cl = makeSOCKcluster(ncores-1)
 registerDoSNOW(cl)
 
 # ------------------------------------------------------------- #
@@ -61,7 +62,7 @@ Mcmc = list(
   R = 1000,
   initial_run = 100,
   keep = 1,
-  burn_pct = 0.75
+  burn_pct = 0.5
 )
 
 # fit models across all dgps
@@ -82,7 +83,7 @@ out = data.frame(fit) %>%
   summarise(across(everything(),mean)) %>%
   # restructure
   pivot_longer(-shrinkage,names_pattern = "(.*)_(.*)_(.*)",names_to=c("variable","p","dgp")) %>%
-  filter(!(variable=="signs" & str_detect(dgp,"sparse"))) %>%
+  # filter(!(variable=="signs" & str_detect(dgp,"sparse"))) %>%
   pivot_wider(names_from=c(variable,p,dgp),values_from=value) %>%
   # reorder columns
   select(shrinkage,starts_with("rmse"),starts_with("signs")) %>%
@@ -90,8 +91,7 @@ out = data.frame(fit) %>%
   mutate(across(starts_with("rmse_"),function(x)ifelse(x==min(x),paste("\\bf",sprintf("%.3f",x)),sprintf("%.3f",x))))
 
 out
-
-# print(xtable(out),include.rownames=FALSE, sanitize.text.function=identity)
+print(xtable(out),include.rownames=FALSE, sanitize.text.function=identity)
 
 # ------------------------------------------------------------- #
 # Simulation 2: n=50, p=100, rep=25, misspecified tree
@@ -128,6 +128,7 @@ out_mis = data.frame(fitmis) %>%
   mutate(across(starts_with("rmse_"),function(x)ifelse(x==min(x),paste("\\bf",sprintf("%.3f",x)),sprintf("%.3f",x))))
 
 out_mis
+print(xtable(out_mis),include.rownames=FALSE, sanitize.text.function=identity)
 
 # ------------------------------------------------------------- #
 # Simulation 3: n=100, p=300, rep=1
