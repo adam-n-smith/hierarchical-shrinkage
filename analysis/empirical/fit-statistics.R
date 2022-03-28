@@ -3,8 +3,11 @@
 # --------------------------------------------------------- #
 
 # function to compute rmse
-compute_rmse = function(out_list,index,n,p,Clisttest,cumnphi){
+compute_rmse = function(out_list,index,n,p,Clisttest,cumnphi,wchprod=NULL){
 
+  if(is.null(wchprod)){
+    wchprod = 1:p
+  }
   rmse = matrix(0,length(index),length(out_list))
   i = 1
   for(r in index){
@@ -15,7 +18,8 @@ compute_rmse = function(out_list,index,n,p,Clisttest,cumnphi){
         Cphi[,j] = Clisttest[[j]]%*%out_list[[m]]$phidraws[r,(cumnphi[j]+1):cumnphi[j+1]]
       }
       # rmse[i,m] = mean((Ytest - Xtest%*%B - Cphi)^2)
-      rmse[i,m] = sqrt(mean((Ytest - Xtest%*%B - Cphi)^2))
+      Yhat = Xtest%*%B + Cphi
+      rmse[i,m] = sqrt(mean((Ytest[,wchprod] - Yhat[,wchprod])^2))
     }
     i = i + 1
   }
@@ -31,12 +35,22 @@ lapply(out_files,load,.GlobalEnv)
 # out_list = lapply(out_files,function(x)unlist(mget(load(x)),recursive=FALSE))
 
 # choose models
-out_list = mget(rev(ls()[str_detect(ls(),"out[.]")]))
+models = mget(rev(ls()[str_detect(ls(),"out[.]")]))
 
 # compute rmse
 end = Mcmc$R/Mcmc$keep
 burn = 0.5*end
-rmse = compute_rmse(out_list,burn:end,ntest,p,Clisttest,cumnphi)
+rmse = compute_rmse(models,burn:end,ntest,p,Clisttest,cumnphi)
+
+# products with limited price variation
+sds = apply(prices[inweeks,-(1:2)],2,sd)
+rmse = compute_rmse(models,burn:end,ntest,p,Clisttest,cumnphi,wchprod=which(sds<quantile(sds,0.1)))
+
+# products with new prices in test data
+newlow = apply(prices[-inweeks,-(1:2)],2,min) < apply(prices[inweeks,-(1:2)],2,min)
+newhigh = apply(prices[-inweeks,-(1:2)],2,max) > apply(prices[inweeks,-(1:2)],2,max)
+newprice = newlow|newhigh
+rmse = compute_rmse(models,burn:end,ntest,p,Clisttest,cumnphi,wchprod=which(newprice))
 
 # plot
 rmse %>%
