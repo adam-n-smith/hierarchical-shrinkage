@@ -1,5 +1,12 @@
 library(foreach)
 library(doParallel)
+library(here)
+
+sourceCpp(here("src","shrinkage-mcmc.cpp"))
+source(here("analysis","empirical","estimation-build.R"))
+
+# where to save output
+folder = "output"
 
 # --------------------------------------------------------- #
 # functions
@@ -27,7 +34,7 @@ fit_parallel = function(Data,Prior,Mcmc,beta,theta="sparse",folder){
   # save
   outname = paste("out",theta,beta,sep=".")
   assign(outname, out)
-  save(list=outname, file=here("empirical analysis",folder,paste0(theta,"_",beta,".RData")))
+  save(list=outname, file=here("analysis",folder,paste0(theta,"_",beta,".RData")))
   
   # print
   return(paste("Total time -",round((proc.time()[3]-itime)/60,2),"minutes"))
@@ -42,19 +49,16 @@ fit_parallel = function(Data,Prior,Mcmc,beta,theta="sparse",folder){
 beta_priors = c("ridge","lasso","horseshoe")
 
 # mcmc
+# Mcmc = list(
+#   R = 20000,
+#   initial_run = 100,
+#   keep = 10
+# )
 Mcmc = list(
-  R = 20000,
+  R = 2000,
   initial_run = 100,
   keep = 10
 )
-# Mcmc = list(
-#   R = 10000,
-#   initial_run = 100,
-#   keep = 5
-# )
-
-# where to save output
-folder = "tmp"
 
 # --------------------------------------------------------- #
 # sparse models
@@ -93,7 +97,6 @@ stopImplicitCluster()
 
 # start
 registerDoParallel(3)
-folder = "tmp"
 
 # data
 Data = list(
@@ -132,3 +135,64 @@ foreach (i=1:length(beta_priors)) %dopar% {
 
 # stop
 stopImplicitCluster()
+
+
+
+
+
+
+
+
+
+
+
+
+
+# --------------------------------------------------------- #
+# all models
+# --------------------------------------------------------- #
+
+# wrapper
+fit_parallel = function(Data,Prior,Mcmc,model,folder){
+  
+  # start time
+  itime = proc.time()[3]
+  
+  theta = word(model,1,sep="_")
+  beta = word(model,2,sep="_")
+  
+  # run
+  if(theta=="sparse"){
+    out = rSURshrinkage(Data,Prior,Mcmc,Shrinkage=beta,print=FALSE)
+  }
+  else{
+    out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product=beta,group=theta),print=FALSE)
+  }
+  
+  # save
+  outname = paste("out",theta,beta,sep=".")
+  assign(outname, out)
+  save(list=outname, file=here("analysis",folder,paste0(theta,"_",beta,".RData")))
+  
+  # print
+  return(paste("Total time -",round((proc.time()[3]-itime)/60,2),"minutes"))
+  
+}
+
+models = c("sparse_ridge",
+           "sparse_lasso",
+           "sparse_horseshoe",
+           "ridge_ridge",
+           "ridge_lasso",
+           "ridge_horseshoe",
+           "horseshoe_ridge",
+           "horseshoe_lasso",
+           "horseshoe_horseshoe")
+
+# start
+registerDoParallel(9)
+
+print_start()
+foreach (i=1:length(models)) %dopar% {
+  fit_parallel(Data,Prior,Mcmc,models[i],folder=folder)
+}
