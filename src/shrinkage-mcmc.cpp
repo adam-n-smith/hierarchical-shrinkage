@@ -9,14 +9,12 @@ using namespace Rcpp;
 // ---------------------------------------------------------------------- //
 
 // unlist function
-vec unlist(List const& list, int const& total_length){
-  
-  int n = list.size();
+vec unlist(List const& list, int const& total_length, int const& list_end){
   
   // loop and fill
   NumericVector output = no_init(total_length);
   int index=0;
-  for(int i=0;i<n;i++){
+  for(int i=0;i<list_end;i++){
     NumericVector el = list[i];
     std::copy(el.begin(), el.end(), output.begin() + index);
     index += el.size();
@@ -542,8 +540,11 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
   // storage matrices
   mat phidraws(Rep/keep,sum(nphi));
   mat betadraws(Rep/keep, p*p);
-  mat thetadraws(Rep/keep,sum(npar));
-  mat thetaowndraws(Rep/keep,sum(npar_own));
+  // mat thetadraws(Rep/keep,sum(npar));
+  // mat thetaowndraws(Rep/keep,sum(npar_own));
+  // only keep higher-level thetas
+  mat thetadraws(Rep/keep,sum(npar(span(0,L-2))));
+  mat thetaowndraws(Rep/keep,sum(npar_own(span(0,L-2))));
   mat lambdadraws(Rep/keep,sum(npar));
   mat taudraws(Rep/keep, L);
   mat tauowndraws(Rep/keep, L);
@@ -857,9 +858,11 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
     if(rep>=initial_run && (rep+1)%keep==0){
       mkeep = (rep-initial_run+1)/keep;
       betadraws(mkeep-1,span::all) = trans(beta);
-      thetadraws(mkeep-1,span::all) = trans(unlist(thetalist,sum(npar)));
-      thetaowndraws(mkeep-1,span::all) = trans(unlist(thetalist_own,sum(npar_own)));
-      lambdadraws(mkeep-1,span::all) = trans(unlist(lambdalist,sum(npar)));
+      // thetadraws(mkeep-1,span::all) = trans(unlist(thetalist,sum(npar)));
+      // only save upper-level thetas
+      thetadraws(mkeep-1,span::all) = trans(unlist(thetalist,sum(npar(span(0,L-2))),L-1));
+      thetaowndraws(mkeep-1,span::all) = trans(unlist(thetalist_own,sum(npar_own(span(0,L-2))),L-1));
+      lambdadraws(mkeep-1,span::all) = trans(unlist(lambdalist,sum(npar),lambdalist.size()));
       taudraws(mkeep-1,span::all) = trans(tau);
       tauowndraws(mkeep-1,span::all) = trans(tau_own);
       sigmasqdraws(mkeep-1,span::all) = trans(sigmasq);
