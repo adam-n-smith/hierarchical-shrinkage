@@ -3,8 +3,8 @@ library(Rcpp)
 library(RcppArmadillo)
 library(here)
 
-source(here("functions","shrinkage_functions.R"))
-sourceCpp(here("functions","shrinkage_mcmc.cpp"))
+source(here("src","shrinkage-functions.R"))
+sourceCpp(here("src","shrinkage-mcmc.cpp"))
 
 # load data
 load(here("build","output","store_panel.RData"))
