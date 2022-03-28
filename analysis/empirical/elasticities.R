@@ -27,11 +27,15 @@ elast = function(out_list,index,p){
   
 }
 
+# load data
+out_files = paste0("analysis/output/",dir(here("analysis","output")))
+lapply(out_files,load,.GlobalEnv)
+
 # choose models
 models = mget(rev(ls()[str_detect(ls(),"out[.]")]))
 
 # compute elasticities
-end = Mcmc$R/Mcmc$keep
+end = nrow(models[[1]]$betadraws)
 burn = 0.5*end
 elasticities = elast(models,burn:end,p)
 
@@ -111,25 +115,71 @@ elasticities %>%
 ggsave(filename="/Users/adamsmith/Dropbox/Research/Hierarchical Shrinkage/paper/figures/elasticities-pairwise.png",
        height=10,width=10)
 
+
+
+
+
+
+
+
+
+
+
+
+
 # effects of hierarchical shrinkage
+
 qtlow = quantile(apply(prices[inweeks,-(1:2)],2,sd),0.2)
 qthigh = quantile(apply(prices[inweeks,-(1:2)],2,sd),0.8)
-sds = data.frame(id=1:p^2,sd=rep(apply(prices[inweeks,-(1:2)],2,sd),times=p))
-# sds = data.frame(id=1:p^2,sd=rep(cut(apply(prices[inweeks,-(1:2)],2,sd),5),times=p))
-colors = RColorBrewer::brewer.pal(3,"Blues")[c(3,1,2)]
+sds = data.frame(id=1:p^2,
+                 Var1=rep(1:p,each=p),
+                 Var2=rep(1:p,times=p),
+                 sd=rep(apply(prices[inweeks,-(1:2)],2,sd),times=p))
 elasticities %>%
   left_join(sds) %>%
-  mutate(sd = ifelse(sd<qtlow,"10",
-                     ifelse(sd>qthigh,"90","10-90"))) %>%
+  mutate(sd = ifelse(sd<qtlow,"10",ifelse(sd>qthigh,"90","10-90"))) %>% 
   filter(own) %>%
-  select(id,model,mean,sd) %>%
-  filter(model %in% c("sparse_ridge","ridge_ridge")) %>%
-  pivot_wider(names_from=model,values_from=mean) %>%
-  ggplot(aes(x=sparse_ridge,y=ridge_ridge)) +
-  geom_point(aes(color=sd,shape=sd),size=3) +
+  select(id,beta,theta,mean,sd) %>%
+  pivot_wider(names_from=theta,values_from=mean) %>%
+  pivot_longer(ridge:horseshoe,names_to="theta",values_to="mean") %>%
+  ggplot(aes(x=sparse,y=mean)) +
+  geom_point(data = . %>% filter(sd=="10-90"),aes(color=sd,shape=sd),size=1) +
+  geom_point(data = . %>% filter(sd=="90"),aes(color=sd,shape=sd),size=1) +
+  geom_point(data = . %>% filter(sd=="10"),aes(color=sd,shape=sd),size=1) +
   geom_abline(slope=1,intercept=0) +
-  # scale_color_brewer(palette="BuPu",direction=-1) +
-  scale_color_manual(values=colors) +
+  scale_color_manual(values=c("#F8766D","grey90","#00BFC4")) +
   scale_shape_manual(values=c(17,16,15)) +
-  xlim(-3,3) +
+  xlim(-3,1) +
+  labs(x="beta from sparse model",y="beta from hierarchical model") +
+  facet_grid(theta~beta) +
   theme_minimal()
+ggsave(filename="/Users/adamsmith/Dropbox/Research/Hierarchical Shrinkage/paper/figures/elasticities-beta-own.png",
+       height=5,width=8)
+
+# qts = quantile(sds %>% filter(Var1==Var2) %>% pull(sd),seq(0,1,by=0.1))
+# qts = quantile(sds %>% filter(Var1>Var2) %>% pull(sd),seq(0,1,by=0.1))
+qtlow = quantile(apply(prices[inweeks,-(1:2)],2,sd),0.01)
+qthigh = quantile(apply(prices[inweeks,-(1:2)],2,sd),0.99)
+elasticities %>%
+  left_join(sds) %>%
+  mutate(sd = ifelse(sd<qtlow,"10",ifelse(sd>qthigh,"90","10-90"))) %>%
+  # mutate(sd = cut(sd,breaks=qts,include.lowest=TRUE,labels=names(qts)[-1])) %>%
+  filter(!own) %>%
+  select(id,beta,theta,mean,sd) %>%
+  pivot_wider(names_from=theta,values_from=mean) %>%
+  pivot_longer(ridge:horseshoe,names_to="theta",values_to="mean") %>%
+  ggplot(aes(x=sparse,y=mean)) +
+  geom_point(data = . %>% filter(sd=="10-90"),aes(color=sd,shape=sd),size=1) +
+  geom_point(data = . %>% filter(sd=="90"),aes(color=sd,shape=sd),size=1) +
+  geom_point(data = . %>% filter(sd=="10"),aes(color=sd,shape=sd),size=1) +
+  geom_abline(slope=1,intercept=0) +
+  # scale_colour_hue(h = c(270, 360)) +
+  scale_color_manual(values=c("#F8766D","grey90","#00BFC4")) +
+  scale_shape_manual(values=c(17,16,15)) +
+  labs(x="beta from sparse model",y="beta from hierarchical model") +
+  xlim(-0.2,0.2) +
+  ylim(-0.2,0.2) +
+  facet_grid(theta~beta) +
+  theme_minimal()
+ggsave(filename="/Users/adamsmith/Dropbox/Research/Hierarchical Shrinkage/paper/figures/elasticities-beta-cross.png",
+       height=5,width=8)
