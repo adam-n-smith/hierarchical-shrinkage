@@ -160,3 +160,81 @@ tbl = df %>%
          j = ifelse(rowname==1,j,"")) %>%
   select(j,i,mean,sd)
 print(xtable(tbl),include.rownames = F, sanitize.text.function = identity)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# --------------------------------------------------------- #
+# theta own and theta across vs. within
+# --------------------------------------------------------- #
+
+df_top_own = data.frame(theta = round(apply(out$thetaowndraws[burn:end,1:npar_own[1]],2,mean),3),
+                        i = rep(unique(product_table$LARGE_CATEGORY),n_distinct(product_table$LARGE_CATEGORY)),
+                        j = rep(unique(product_table$LARGE_CATEGORY),n_distinct(product_table$LARGE_CATEGORY))) %>%
+  mutate(within = "own",
+         level = "category")
+df_mid_own = data.frame(theta = round(apply(out$thetaowndraws[burn:end,(npar_own[1]+1):cumsum(npar_own)[2]],2,mean),3),
+                        i = rep(unique(product_table$SMALL_CATEGORY),n_distinct(product_table$SMALL_CATEGORY)),
+                        j = rep(unique(product_table$SMALL_CATEGORY),n_distinct(product_table$SMALL_CATEGORY))) %>%
+  mutate(within = "own",
+         level = "subcategory")
+df_top = data.frame(theta = round(apply(out$thetadraw[burn:end,1:npar[1]],2,mean),3),
+                    i = rep(unique(product_table$LARGE_CATEGORY),n_distinct(product_table$LARGE_CATEGORY)),
+                    j = rep(unique(product_table$LARGE_CATEGORY),each=n_distinct(product_table$LARGE_CATEGORY))) %>%
+  mutate(within = ifelse(i==j,"within","across"),
+         level = "category")
+df_mid = data.frame(theta = round(apply(out$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,mean),3),
+                    i = rep(unique(product_table$SMALL_CATEGORY),n_distinct(product_table$SMALL_CATEGORY)),
+                    j = rep(unique(product_table$SMALL_CATEGORY),each=n_distinct(product_table$SMALL_CATEGORY))) %>%
+  mutate(within = ifelse(i==j,"within","across"),
+         level = "subcategory")
+# df = rbind(df_top,df_mid,df_top_own,df_mid_own) %>%
+#   mutate(within=factor(within,levels=c("own","within","across")))
+# ggplot(df,aes(x=theta)) +
+#   geom_density(aes(color=level,linetype=level)) +
+#   labs(x="", y="density\n") +
+#   theme_minimal() +
+#   theme(legend.title = element_blank(),
+#         legend.position = "bottom",
+#         plot.title = element_text(hjust=0.5, face="bold")) +
+#   facet_wrap(vars(within),scales="free")
+df = rbind(df_top_own,df_mid_own)
+ggplot(df,aes(x=theta)) +
+  geom_density(aes(color=level,linetype=level)) +
+  labs(x="", y="density\n") +
+  theme_minimal() +
+  xlim(-4,2) +
+  theme(legend.title = element_blank(),
+        legend.position = "bottom",
+        plot.title = element_text(hjust=0.5, face="bold"))
+df = rbind(df_top,df_mid)
+ggplot(df,aes(x=theta)) +
+  geom_density(aes(color=level,linetype=within)) +
+  labs(x="", y="density\n") +
+  xlim(-0.1,0.1) +
+  theme_minimal() +
+  theme(legend.title = element_blank(),
+        legend.position = "bottom",
+        plot.title = element_text(hjust=0.5, face="bold"))
