@@ -28,12 +28,12 @@ elast = function(out_list,index,p){
 }
 
 # choose models
-out_list = mget(rev(ls()[str_detect(ls(),"out[.]")]))
+models = mget(rev(ls()[str_detect(ls(),"out[.]")]))
 
 # compute elasticities
 end = Mcmc$R/Mcmc$keep
 burn = 0.5*end
-elasticities = elast(out_list,burn:end,p)
+elasticities = elast(models,burn:end,p)
 
 # summary stats (own)
 elasticities %>%
@@ -99,17 +99,6 @@ elasticities %>%
 ggsave(filename="/Users/adamsmith/Dropbox/Research/Hierarchical Shrinkage/paper/figures/elasticities-own.png",
        height=5,width=7)
 
-# effects of hierarchical shrinkage
-sds = data.frame(id=1:p^2,sd=rep(cut(apply(Data$X,2,sd),4),each=p))
-elasticities %>%
-  left_join(sds) %>%
-  filter(!own) %>%
-  select(id,model,mean,sd) %>%
-  pivot_wider(names_from=model,values_from=mean) %>%
-  ggplot(aes(x=sparse_ridge,y=ridge_ridge)) +
-  geom_point(aes(color=sd)) +
-  facet_wrap(vars(sd))
-
 # pairwise own
 elasticities %>%
   filter(own) %>%
@@ -121,3 +110,26 @@ elasticities %>%
   theme_minimal()
 ggsave(filename="/Users/adamsmith/Dropbox/Research/Hierarchical Shrinkage/paper/figures/elasticities-pairwise.png",
        height=10,width=10)
+
+# effects of hierarchical shrinkage
+qtlow = quantile(apply(prices[inweeks,-(1:2)],2,sd),0.2)
+qthigh = quantile(apply(prices[inweeks,-(1:2)],2,sd),0.8)
+sds = data.frame(id=1:p^2,sd=rep(apply(prices[inweeks,-(1:2)],2,sd),times=p))
+# sds = data.frame(id=1:p^2,sd=rep(cut(apply(prices[inweeks,-(1:2)],2,sd),5),times=p))
+colors = RColorBrewer::brewer.pal(3,"Blues")[c(3,1,2)]
+elasticities %>%
+  left_join(sds) %>%
+  mutate(sd = ifelse(sd<qtlow,"10",
+                     ifelse(sd>qthigh,"90","10-90"))) %>%
+  filter(own) %>%
+  select(id,model,mean,sd) %>%
+  filter(model %in% c("sparse_ridge","ridge_ridge")) %>%
+  pivot_wider(names_from=model,values_from=mean) %>%
+  ggplot(aes(x=sparse_ridge,y=ridge_ridge)) +
+  geom_point(aes(color=sd,shape=sd),size=3) +
+  geom_abline(slope=1,intercept=0) +
+  # scale_color_brewer(palette="BuPu",direction=-1) +
+  scale_color_manual(values=colors) +
+  scale_shape_manual(values=c(17,16,15)) +
+  xlim(-3,3) +
+  theme_minimal()
