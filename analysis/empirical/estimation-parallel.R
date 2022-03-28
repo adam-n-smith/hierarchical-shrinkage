@@ -1,3 +1,6 @@
+library(tidyverse)
+library(Rcpp)
+library(RcppArmadillo)
 library(foreach)
 library(doParallel)
 library(here)
@@ -189,10 +192,42 @@ models = c("sparse_ridge",
            "horseshoe_lasso",
            "horseshoe_horseshoe")
 
+# data
+Data = list(
+  Y = Y,
+  X = X,
+  Clist = Clist,
+  tree = tree,
+  childrencounts = childrencounts,
+  list = list,
+  list_own = list_own,
+  npar = npar,
+  npar_own = npar_own
+)
+
+# priors
+Prior = list(
+  thetabar_cross = 0,
+  thetabar_own = 0,
+  Aphi = .1*diag(nphi),
+  phibar = double(nphi),
+  a = 5,
+  b = 5
+)
+
+# mcmc
+Mcmc = list(
+  R = 50000,
+  initial_run = 100,
+  keep = 50
+)
+
 # start
 registerDoParallel(9)
-
 print_start()
 foreach (i=1:length(models)) %dopar% {
   fit_parallel(Data,Prior,Mcmc,models[i],folder=folder)
 }
+
+# stop
+stopImplicitCluster()
