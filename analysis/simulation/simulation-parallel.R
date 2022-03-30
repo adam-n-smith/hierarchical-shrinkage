@@ -49,8 +49,7 @@ registerDoSNOW(cl)
 # Prior
 Prior = list(
   thetabar_own = 0, 
-  thetabar_cross = 0, 
-  taubarii = 10,
+  thetabar_cross = 0,
   Aphi = .01*diag(p), 
   phibar = double(p),
   a = 5, 
