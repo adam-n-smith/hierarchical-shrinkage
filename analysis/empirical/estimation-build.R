@@ -10,15 +10,19 @@ sourceCpp(here("src","shrinkage-mcmc.cpp"))
 load(here("build","output","store_panel.RData"))
 
 # build tree objects
-childrencounts = countchildren_cpp(tree)
-treeindex = createindex(tree)
-index = treeindex$index
-list = treeindex$list
-list_own = treeindex$list_own
-npar = treeindex$npar
-npar_own = treeindex$npar_own
-L = ncol(tree)
-p = nrow(tree)
+if(!("childrencounts"%in%ls())){
+  childrencounts = countchildren_cpp(tree)
+}
+if(!("treeindex"%in%ls())){
+  treeindex = createindex(tree)
+  index = treeindex$index
+  list = treeindex$list
+  list_own = treeindex$list_own
+  npar = treeindex$npar
+  npar_own = treeindex$npar_own
+  L = ncol(tree)
+  p = nrow(tree)
+}
 
 # --------------------------------------------------------- #
 # split data into training/test
