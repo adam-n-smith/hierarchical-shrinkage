@@ -1,3 +1,6 @@
+sourceCpp(here("src","shrinkage-mcmc.cpp"))
+source(here("analysis","empirical","estimation-build.R"))
+
 # --------------------------------------------------------- #
 # predictive fit statistics
 # --------------------------------------------------------- #
@@ -29,28 +32,27 @@ compute_rmse = function(out_list,index,n,p,Clisttest,cumnphi,wchprod=NULL){
 }
 
 # load data
-out_files = paste0("empirical analysis/output/",dir(here("empirical analysis","output")))
-out_files = out_files[!str_detect(out_files,"old")]
+out_files = paste0("analysis/output/",dir(here("analysis","output")))
+out_files = out_files[!str_detect(out_files,"march")]
 lapply(out_files,load,.GlobalEnv)
-# out_list = lapply(out_files,function(x)unlist(mget(load(x)),recursive=FALSE))
 
 # choose models
 models = mget(rev(ls()[str_detect(ls(),"out[.]")]))
 
 # compute rmse
-end = Mcmc$R/Mcmc$keep
+end = nrow(models[[1]]$betadraws)
 burn = 0.5*end
 rmse = compute_rmse(models,burn:end,ntest,p,Clisttest,cumnphi)
 
 # products with limited price variation
 sds = apply(prices[inweeks,-(1:2)],2,sd)
-rmse = compute_rmse(models,burn:end,ntest,p,Clisttest,cumnphi,wchprod=which(sds<quantile(sds,0.1)))
+rmse_psd = compute_rmse(models,burn:end,ntest,p,Clisttest,cumnphi,wchprod=which(sds<quantile(sds,0.25)))
 
 # products with new prices in test data
 newlow = apply(prices[-inweeks,-(1:2)],2,min) < apply(prices[inweeks,-(1:2)],2,min)
 newhigh = apply(prices[-inweeks,-(1:2)],2,max) > apply(prices[inweeks,-(1:2)],2,max)
 newprice = newlow|newhigh
-rmse = compute_rmse(models,burn:end,ntest,p,Clisttest,cumnphi,wchprod=which(newprice))
+rmse_new = compute_rmse(models,burn:end,ntest,p,Clisttest,cumnphi,wchprod=which(newprice))
 
 # plot
 rmse %>%
@@ -67,9 +69,19 @@ rmse %>%
   theme(axis.text.x = element_text(angle=90,hjust=1))
 
 # means
-mean = apply(rmse,2,function(x)sprintf("%.3f",mean(x)))
-sd = apply(rmse,2,function(x)sprintf("%.4f",sd(x)))
+mean = apply(rmse_new,2,function(x)sprintf("%.3f",mean(x)))
+sd = apply(rmse_new,2,function(x)sprintf("%.4f",sd(x)))
 cbind(mean,sd)
 
 # matplot
 matplot(rmse,type="l")
+
+rmse %>%
+  mutate(iteration=1:nrow(rmse)) %>%
+  pivot_longer(-iteration,names_to="model") %>%
+  ggplot(aes(x=iteration,y=value)) +
+  geom_line(aes(color=model)) +
+  facet_wrap(vars(model),scales="free")
+
+
+

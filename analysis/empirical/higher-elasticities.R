@@ -112,7 +112,7 @@ ggsave(filename="/Users/adamsmith/Dropbox/Research/Hierarchical Shrinkage/paper/
 # --------------------------------------------------------- #
 
 end = Mcmc$R/Mcmc$keep
-burn = 0.5*end
+burn = 0.2*end
 
 df = data.frame(mean = apply(out$thetadraw[burn:end,1:npar[1]],2,mean),
                 sd = apply(out$thetadraw[burn:end,1:npar[1]],2,sd),
@@ -138,11 +138,11 @@ df = data.frame(mean = apply(out$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]]
                 sd = apply(out$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,sd),
                 lower = apply(out$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,function(x)quantile(x,0.025)),
                 upper = apply(out$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,function(x)quantile(x,0.975)),
-                i = rep(unique(tree_names_clean$SMALL_CATEGORY),n_distinct(tree_names_clean$SMALL_CATEGORY)),
-                j = rep(unique(tree_names_clean$SMALL_CATEGORY),each=n_distinct(tree_names_clean$SMALL_CATEGORY))) %>%
-  left_join(.,unique(tree_names_clean[,c("SMALL_CATEGORY","LARGE_CATEGORY")]),by=c("j"="SMALL_CATEGORY")) %>%
-  mutate(focal_i = str_detect(j,"Imported"),
-         focal_j = str_detect(j,"Domestic"),
+                i = rep(unique(tree_names$SMALL_CATEGORY),n_distinct(tree_names$SMALL_CATEGORY)),
+                j = rep(unique(tree_names$SMALL_CATEGORY),each=n_distinct(tree_names$SMALL_CATEGORY))) %>%
+  left_join(.,unique(tree_names[,c("SMALL_CATEGORY","LARGE_CATEGORY")]),by=c("j"="SMALL_CATEGORY")) %>%
+  mutate(focal_i = str_detect(j,"IMPORTED"),
+         focal_j = str_detect(j,"DOMESTIC"),
          within =i==j)
 tbl = df %>% 
   filter(focal_j) %>%
@@ -191,13 +191,13 @@ print(xtable(tbl),include.rownames = F, sanitize.text.function = identity)
 # --------------------------------------------------------- #
 
 df_top_own = data.frame(theta = round(apply(out$thetaowndraws[burn:end,1:npar_own[1]],2,mean),3),
-                        i = rep(unique(product_table$LARGE_CATEGORY),n_distinct(product_table$LARGE_CATEGORY)),
-                        j = rep(unique(product_table$LARGE_CATEGORY),n_distinct(product_table$LARGE_CATEGORY))) %>%
+                        i = unique(product_table$LARGE_CATEGORY),
+                        j = unique(product_table$LARGE_CATEGORY)) %>%
   mutate(within = "own",
          level = "category")
 df_mid_own = data.frame(theta = round(apply(out$thetaowndraws[burn:end,(npar_own[1]+1):cumsum(npar_own)[2]],2,mean),3),
-                        i = rep(unique(product_table$SMALL_CATEGORY),n_distinct(product_table$SMALL_CATEGORY)),
-                        j = rep(unique(product_table$SMALL_CATEGORY),n_distinct(product_table$SMALL_CATEGORY))) %>%
+                        i = unique(product_table$SMALL_CATEGORY),
+                        j = unique(product_table$SMALL_CATEGORY)) %>%
   mutate(within = "own",
          level = "subcategory")
 df_top = data.frame(theta = round(apply(out$thetadraw[burn:end,1:npar[1]],2,mean),3),
@@ -210,31 +210,92 @@ df_mid = data.frame(theta = round(apply(out$thetadraw[burn:end,(npar[1]+1):cumsu
                     j = rep(unique(product_table$SMALL_CATEGORY),each=n_distinct(product_table$SMALL_CATEGORY))) %>%
   mutate(within = ifelse(i==j,"within","across"),
          level = "subcategory")
-# df = rbind(df_top,df_mid,df_top_own,df_mid_own) %>%
-#   mutate(within=factor(within,levels=c("own","within","across")))
-# ggplot(df,aes(x=theta)) +
-#   geom_density(aes(color=level,linetype=level)) +
-#   labs(x="", y="density\n") +
-#   theme_minimal() +
-#   theme(legend.title = element_blank(),
-#         legend.position = "bottom",
-#         plot.title = element_text(hjust=0.5, face="bold")) +
-#   facet_wrap(vars(within),scales="free")
-df = rbind(df_top_own,df_mid_own)
-ggplot(df,aes(x=theta)) +
-  geom_density(aes(color=level,linetype=level)) +
-  labs(x="", y="density\n") +
+df_own = rbind(df_top_own,df_mid_own)
+plt_own = ggplot(df_own,aes(x=theta)) +
+  geom_density(aes(linetype=level)) +
+  labs(x="",title="Own Elasticities") +
   theme_minimal() +
   xlim(-4,2) +
   theme(legend.title = element_blank(),
         legend.position = "bottom",
         plot.title = element_text(hjust=0.5, face="bold"))
 df = rbind(df_top,df_mid)
-ggplot(df,aes(x=theta)) +
-  geom_density(aes(color=level,linetype=within)) +
-  labs(x="", y="density\n") +
+plt_cross = ggplot(df,aes(x=theta)) +
+  geom_density(aes(linetype=level,color=within)) +
+  labs(x="",title="Cross Elasticities") +
   xlim(-0.1,0.1) +
   theme_minimal() +
   theme(legend.title = element_blank(),
         legend.position = "bottom",
-        plot.title = element_text(hjust=0.5, face="bold"))
+        plot.title = element_text(hjust=0.5, face="bold")) +
+  guides(color = guide_legend(order=2), 
+         linetype = guide_legend(order=1))
+
+library(ggpubr)
+ggarrange(plt_own,plt_cross,
+          legend.grob = get_legend(plt_cross), legend="bottom")
+ggsave(filename="/Users/adamsmith/Dropbox/Research/Hierarchical Shrinkage/paper/figures/elasticities-theta.png",
+       height=3.5,width=7)
+
+# --------------------------------------------------------- #
+# example table
+# --------------------------------------------------------- #
+
+
+matrix(apply(out$thetadraw[burn:end,1:npar[1]],2,mean),9,9)
+round(matrix(apply(out$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,mean),28,28),3)
+
+df = data.frame(mean = apply(out$thetadraw[burn:end,1:npar[1]],2,mean),
+                sd = apply(out$thetadraw[burn:end,1:npar[1]],2,sd),
+                lower = apply(out$thetadraw[burn:end,1:npar[1]],2,function(x)quantile(x,0.025)),
+                upper = apply(out$thetadraw[burn:end,1:npar[1]],2,function(x)quantile(x,0.975)),
+                price_of = rep(unique(product_table$LARGE_CATEGORY),times=n_distinct(product_table$LARGE_CATEGORY)),
+                demand_of = rep(unique(product_table$LARGE_CATEGORY),each=n_distinct(product_table$LARGE_CATEGORY)))
+df %>%
+  group_by(demand_of) %>%
+  summarise(max=price_of[which.max(mean)],
+            maxval=max(mean),
+            min=price_of[which.min(mean)],
+            minval=min(mean))
+
+xtable()
+
+library(snakecase)
+df = data.frame(mean = apply(out$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,mean),
+                sd = apply(out$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,sd),
+                lower = apply(out$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,function(x)quantile(x,0.025)),
+                upper = apply(out$thetadraw[burn:end,(npar[1]+1):cumsum(npar)[2]],2,function(x)quantile(x,0.975)),
+                price_of = rep(unique(product_table$SMALL_CATEGORY),times=n_distinct(product_table$SMALL_CATEGORY)),
+                demand_of = rep(unique(product_table$SMALL_CATEGORY),each=n_distinct(product_table$SMALL_CATEGORY))) %>%
+  mutate(price_of = to_any_case(price_of,case="title",parsing_option = 0),
+         demand_of = to_any_case(demand_of,case="title",parsing_option = 0))
+
+df %>%
+  filter(str_detect(demand_of,"Domestic")) %>%
+  arrange(-mean)
+
+df %>%
+  group_by(demand_of) %>%
+  summarise(max=price_of[which.max(mean)],
+            maxval=max(mean),
+            min=price_of[which.min(mean)],
+            minval=min(mean)) %>%
+  print(n=50)
+
+
+df %>%
+  group_by(k) %>%
+  summarise(max=ell[which.max(mean)],
+            maxval=max(mean),
+            min=ell[which.min(mean)],
+            minval=min(mean)) %>%
+  print(n=50)
+
+df %>%
+  group_by(ell) %>%
+  summarise(max=k[which.max(mean)],
+            maxval=max(mean),
+            min=k[which.min(mean)],
+            minval=min(mean)) %>%
+  print(n=50)
+  xtable()

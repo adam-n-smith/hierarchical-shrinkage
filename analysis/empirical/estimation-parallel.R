@@ -155,14 +155,19 @@ stopImplicitCluster()
 # all models
 # --------------------------------------------------------- #
 
+# print start time
+print_start = function(){
+  cat("Start time -",format(Sys.time(), "%I:%M%p"), "\n")
+}
+
 # wrapper
 fit_parallel = function(Data,Prior,Mcmc,model,folder){
   
   # start time
   itime = proc.time()[3]
   
-  theta = word(model,1,sep="_")
-  beta = word(model,2,sep="_")
+  theta = stringr::word(model,1,sep="_")
+  beta = stringr::word(model,2,sep="_")
   
   # run
   if(theta=="sparse"){
@@ -182,15 +187,17 @@ fit_parallel = function(Data,Prior,Mcmc,model,folder){
   
 }
 
-models = c("sparse_ridge",
-           "sparse_lasso",
-           "sparse_horseshoe",
-           "ridge_ridge",
-           "ridge_lasso",
-           "ridge_horseshoe",
-           "horseshoe_ridge",
-           "horseshoe_lasso",
-           "horseshoe_horseshoe")
+models = c(
+  "sparse_ridge",
+  "sparse_lasso",
+  "sparse_horseshoe",
+  "ridge_ridge",
+  "ridge_lasso",
+  "ridge_horseshoe",
+  "horseshoe_ridge",
+  "horseshoe_lasso",
+  "horseshoe_horseshoe"
+)
 
 # data
 Data = list(
@@ -216,14 +223,19 @@ Prior = list(
 )
 
 # mcmc
+# Mcmc = list(
+#   R = 50000,
+#   initial_run = 500,
+#   keep = 50
+# )
 Mcmc = list(
-  R = 50000,
+  R = 500,
   initial_run = 100,
-  keep = 50
+  keep = 1
 )
 
 # start
-registerDoParallel(9)
+registerDoParallel(cores=9)
 print_start()
 foreach (i=1:length(models)) %dopar% {
   fit_parallel(Data,Prior,Mcmc,models[i],folder=folder)

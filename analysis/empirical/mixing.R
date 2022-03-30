@@ -17,8 +17,8 @@ getacf = function(models,lags,quantiles,burn,wchpar){
   # format model names
   model_names = names(models) %>% 
     str_remove(., "out.") %>%
-    str_replace(.,"\\.","\n")
-  
+    str_replace(.,"\\.","_") 
+
   # storage
   R = nrow(models[[1]]$betadraws[-(1:burn),])
   lags = lags[lags<R]
@@ -57,7 +57,20 @@ getacf = function(models,lags,quantiles,burn,wchpar){
   
   # reformat array as tbl
   out = melt(out, value.name="acf") %>%
-    mutate(quantile = factor(quantile,levels=rev(quantiles)))
+    mutate(quantile = factor(quantile,levels=rev(quantiles))) %>%
+    # separate model into theta and beta
+    mutate(theta = word(model,1,sep="_"),
+           beta = word(model,2,sep="_")) %>%
+    select(-model) %>%
+    # formatting
+    mutate(beta = case_when(beta == "ridge" ~ paste("beta","-ridge"),
+                            beta == "lasso" ~ paste("beta","-lasso"),
+                            beta == "horseshoe" ~ paste("beta","-horseshoe")),
+           beta = factor(beta, levels=unique(beta)),
+           theta = case_when(theta == "ridge" ~ paste("theta","-ridge"),
+                             theta == "horseshoe" ~ paste("theta","-horseshoe"),
+                             theta == "sparse" ~ paste("sparse")),
+           theta = factor(theta, levels=unique(theta)))
   
   return(out)
   
@@ -84,40 +97,40 @@ lags = seq(0,50,by=1)
 colors = RColorBrewer::brewer.pal(8,"Blues")[c(4,6,8)]
 
 # thetas (upper level)
-# matplot(out.ridge.ridge$thetadraws[,1:npar[1]],type="l")
+matplot(out.ridge.ridge$thetadraws[,1],type="l")
 acf.theta.top = getacf(models,lags,quantiles,burn,wchpar=1:npar[1])
 acf.theta.top %>%
   ggplot(aes(x=lag,y=acf,group=quantile)) +
   geom_line(aes(color=quantile)) +
   ylim(min(acf.theta.top$acf),1) +
-  facet_wrap(vars(model)) +
+  facet_grid(theta~beta, labeller=label_parsed) +
   scale_color_manual(values=colors) +
   theme_minimal()
 ggsave(filename=paste0(figurepath,"mixing-acf-top.png"),
-       height=5,width=5)
+       height=3,width=6)
 
 # thetas (middle level)
-# matplot(out.ridge.ridge$thetadraws[,(npar[1]+1):cumsum(npar)[2]],type="l")
+matplot(out.ridge.ridge$thetadraws[,npar[1]+1],type="l")
 acf.theta.mid = getacf(models,lags,quantiles,burn,wchpar=(npar[1]+1):cumsum(npar)[2])
 acf.theta.mid %>%  
   ggplot(aes(x=lag,y=acf,group=quantile)) +
   geom_line(aes(color=quantile)) +
   ylim(min(acf.theta.mid$acf),1) +
-  facet_wrap(vars(model)) +
+  facet_grid(theta~beta, labeller=label_parsed) +
   scale_color_manual(values=colors) +
   theme_minimal()
 ggsave(filename=paste0(figurepath,"mixing-acf-mid.png"),
-       height=5,width=5)
+       height=3,width=6)
 
 # betas
-# matplot(out.ridge.horseshoe$betadraws[,5],type="l")
+matplot(out.sparse.ridge$betadraws[,1],type="l")
 acf.beta = getacf(models,lags,quantiles,burn,wchpar="beta")
 acf.beta %>%
   ggplot(aes(x=lag,y=acf,group=quantile,color=quantile)) +
   geom_line(aes(color=quantile)) +
   ylim(min(acf.beta$acf),1) +
   scale_color_brewer(palette = "Blues") +
-  facet_wrap(vars(model)) +
+  facet_grid(theta~beta, labeller=label_parsed) +
   theme_minimal()
 ggsave(filename=paste0(figurepath,"mixing-acf-beta.png"),
-       height=5,width=5)
+       height=4,width=6)
