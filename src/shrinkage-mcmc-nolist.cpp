@@ -263,8 +263,7 @@ vec draw_theta(int const& ell, vec const& npar, List const& parindextree,
   
   vec endindex = cumsum(npar)-1;
   vec begindex = endindex-npar+1;
-  int L = tausq.size();
-  
+
   // above = prior
   // below = data
 
@@ -691,7 +690,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
   
   // initial values: own elasticities
   vec theta_own = zeros(sum(npar_own));
-  theta(sum(npar_own)-1) = thetabar_own;
+  theta_own(sum(npar_own)-1) = thetabar_own;
   theta_own(span(0,npar_own(0)-1)) = beta(wchown);
   vec lambdasq_own = ones(sum(npar_own));
   vec xilambda_own = ones(sum(npar_own));
