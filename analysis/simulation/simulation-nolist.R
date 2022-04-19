@@ -182,8 +182,8 @@ simdata = function(n,p,d,settings){
 }
 
 # dimensions
-n = 100
-p = 300
+n = 50
+p = 100
 d = 1
 
 # tree
@@ -212,7 +212,6 @@ data = simdata(n,p,d,settings)
 # data
 Data = list(
   Y = data$Y,
-  thetalist = data$thetalist,
   X = data$X, 
   Clist = data$Clist, 
   tree = tree,
@@ -234,7 +233,7 @@ Prior = list(
 
 # mcmc
 Mcmc = list(
-  R = 1000,
+  R = 100,
   keep = 1
 )
 

@@ -16,6 +16,8 @@ build/*
 
 # saved model objects
 analysis/output/*
+analysis/tmp/*
+analysis/simulation/output/*
 
 # miscellaneous
 .DS_Store
