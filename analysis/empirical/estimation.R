@@ -3,8 +3,8 @@ library(Rcpp)
 library(RcppArmadillo)
 library(here)
 
-source(here("src","shrinkage-functions.R"))
-sourceCpp(here("src","shrinkage-mcmc.cpp"))
+source(here("src","shrinkage-functions-nolist.R"))
+sourceCpp(here("src","shrinkage-mcmc-nolist.cpp"))
 source(here("analysis","empirical","estimation-build.R"))
 
 # --------------------------------------------------------- #
@@ -17,9 +17,8 @@ Data = list(
   X = X,
   Clist = Clist,
   tree = tree,
-  childrencounts = childrencounts,
-  list = list,
-  list_own = list_own,
+  parindextree = parindextree,
+  parindextree_own = parindextree_own,
   npar = npar,
   npar_own = npar_own
 )
@@ -36,9 +35,8 @@ Prior = list(
 
 # mcmc
 Mcmc = list(
-  R = 20000,
-  initial_run = 0,
-  keep = 10
+  R = 1000,
+  keep = 5
 )
 
 out.sparse.ridge = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="ridge",print=TRUE)
@@ -60,10 +58,10 @@ out.horseshoe.horseshoe = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(produ
 end = Mcmc$R/Mcmc$keep
 burn = 0.5*end
 
-# out = out.sparse_ridge
+out = out.sparse.ridge
 # out = out.sparse.lasso
 # out = out.sparse.horseshoe
-# out = out.ridge.ridge
+out = out.ridge.ridge
 # out = out.ridge.lasso
 # out = out.ridge.horseshoe
 # out = out.horseshoe.ridge
@@ -88,6 +86,13 @@ matplot(out$thetadraws[,284:300],type="l")
 wchown = as.vector(diag(p)==1)
 hist(apply(out$betadraws[,wchown],2,mean), main="Own Elasticities")
 hist(apply(out$betadraws[,!wchown],2,mean), main="Cross Elasticities")
+
+summary(apply(out$betadraws[,wchown],2,mean))
+
+
+
+
+
 data.frame(out$betadraws[,wchown]) %>%
   summarise(across(everything(),
                    list(mean=mean, low=~quantile(.,0.025), high=~quantile(.,0.975)))) %>%
@@ -96,7 +101,8 @@ data.frame(out$betadraws[,wchown]) %>%
                names_pattern = "(.*)_(.*)") %>%
   mutate(significant = ifelse(low<0 & high>0,"no","yes")) %>%
   ggplot(aes(x=mean, fill=significant)) +
-  geom_histogram()
+  geom_histogram() +
+  xlim(-7.5,2.5)
 
 # sigmasq
 matplot(sqrt(out$sigmasqdraws),type="l")
