@@ -3,23 +3,19 @@ library(Rcpp)
 library(RcppArmadillo)
 library(here)
 
-source(here("src","shrinkage-functions.R"))
-sourceCpp(here("src","shrinkage-mcmc.cpp"))
+source(here("src","shrinkage-functions-nolist.R"))
+sourceCpp(here("src","shrinkage-mcmc-nolist.cpp"))
 
 # load data
-load(here("build","output","store_panel.RData"))
+# load(here("build","output","store_panel.RData"))
 
 # build tree objects
-if(!("childrencounts"%in%ls())){
-  childrencounts = countchildren_cpp(tree)
-}
-if(!("treeindex"%in%ls())){
-  treeindex = createindex(tree)
-  index = treeindex$index
-  list = treeindex$list
-  list_own = treeindex$list_own
-  npar = treeindex$npar
-  npar_own = treeindex$npar_own
+if(!("objects" %in% ls())){
+  objects = create_treeobjects(tree)
+  parindextree = objects$parindextree
+  parindextree_own = objects$parindextree_own
+  npar = objects$npar
+  npar_own = objects$npar_own
   L = ncol(tree)
   p = nrow(tree)
 }
