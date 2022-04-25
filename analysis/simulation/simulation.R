@@ -104,7 +104,7 @@ stopCluster(cl)
 
 path = "/Users/adamsmith/Dropbox/Research/Hierarchical Shrinkage/paper/figures/"
 for(i in 1:length(data)){
-  tmp = melt(data[[i]][[rep]]$B) %>%
+  tmp = melt(data[[i]][[22]]$B) %>%
     filter(Var1!=Var2) %>%
     mutate(Var1=as.factor(Var1),
            Var2=as.factor(Var2)) %>%
@@ -118,7 +118,7 @@ for(i in 1:length(data)){
           axis.text.x=element_blank(),
           axis.text.y=element_blank(),
           plot.background = element_rect(fill = "transparent", color = NA))
-  ggsave(filename=paste0(path,"simulated_elasticities_",i,".png"),
+  ggsave(filename=paste0(path,"simulated-elasticities-",i,".png"),
          tmp,
          height=5,width=5,
          bg = "transparent")
