@@ -97,3 +97,29 @@ save(n,p,rep,data,models,Prior,Mcmc,fit,fit1,fit2,fit3,fit4,out,tree_true,
 
 # stop
 stopCluster(cl)
+
+# ------------------------------------------------------------- #
+# plot elasticity matrices
+# ------------------------------------------------------------- #
+
+path = "/Users/adamsmith/Dropbox/Research/Hierarchical Shrinkage/paper/figures/"
+for(i in 1:length(data)){
+  tmp = melt(data[[i]][[rep]]$B) %>%
+    filter(Var1!=Var2) %>%
+    mutate(Var1=as.factor(Var1),
+           Var2=as.factor(Var2)) %>%
+    ggplot(aes(x=Var1,y=fct_rev(Var2),fill=value)) +
+    geom_tile(color="white") +
+    labs(x="",y="") +
+    scale_x_discrete(position = "top") +
+    scale_fill_gradient2(low="#F8766D",mid="white",high="#00BFC4") +
+    theme_minimal() +
+    theme(legend.position="none",
+          axis.text.x=element_blank(),
+          axis.text.y=element_blank(),
+          plot.background = element_rect(fill = "transparent", color = NA))
+  ggsave(filename=paste0(path,"simulated_elasticities_",i,".png"),
+         tmp,
+         height=5,width=5,
+         bg = "transparent")
+}
