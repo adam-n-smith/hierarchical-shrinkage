@@ -9,6 +9,7 @@ using namespace Rcpp;
 // ---------------------------------------------------------------------- //
 
 // replace function
+//[[Rcpp::export]]
 vec replace_cpp(vec const& x, vec const& y){
   
   int n = y.n_elem;
@@ -503,11 +504,13 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
     // cross
     levelsums = sum(pow(beta(wchcross),2.0)/lambdasq);
     tausq = 1/R::rgamma(0.5*(p*p-p+1), 1/as_scalar(1/xitau+0.5*levelsums));
+    if(tausq(0)<1.0e-6) tausq(0) = 1.0e-6;
     xitau = 1/R::rgamma(1,as_scalar(1/(1+1/tausq)));
     
     // own
     levelsums = sum(pow(beta(wchown),2.0));
     tausqown = 1/R::rgamma(0.5*(p+1), 1/as_scalar(1/xitauown+0.5*levelsums));
+    if(tausqown(0)<1.0e-6) tausqown(0) = 1.0e-6;
     xitauown = 1/R::rgamma(1,as_scalar(1/(1+1/tausqown)));
     
     // lambdasq  ---------------------------------------------------- //
