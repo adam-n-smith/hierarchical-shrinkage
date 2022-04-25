@@ -18,6 +18,7 @@ build/*
 analysis/output/*
 analysis/tmp/*
 analysis/simulation/output/*
+analysis/empirical/output/*
 
 # miscellaneous
 .DS_Store
