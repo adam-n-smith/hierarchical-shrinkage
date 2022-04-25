@@ -3,11 +3,11 @@ library(Rcpp)
 library(RcppArmadillo)
 library(here)
 
-source(here("src","shrinkage-functions-nolist.R"))
-sourceCpp(here("src","shrinkage-mcmc-nolist.cpp"))
+source(here("src","shrinkage-functions.R"))
+sourceCpp(here("src","shrinkage-mcmc.cpp"))
 
 # load data
-# load(here("build","output","store_panel.RData"))
+load(here("build","output","store_panel.RData"))
 
 # build tree objects
 if(!("objects" %in% ls())){
@@ -62,34 +62,23 @@ for(i in 1:p){
   promo = feati + dispi
 
   # training
-  # C = cbind(matrix(1,nrow=n),as.matrix(seasonal[inweeks,c("SUMMER","HOLIDAY")]))
-  # C = cbind(matrix(1,nrow=n),as.matrix(seasonal[inweeks,c("YEAR","QUARTER_2","QUARTER_3","QUARTER_4","HOLIDAY")]))
-  # C = cbind(matrix(1,nrow=n))
-  # C = cbind(matrix(1,nrow=n),as.matrix(dispi))
   C = as.matrix(cbind(rep(1,n),seasonal[inweeks,c("SUMMER","HOLIDAY")],dispi))
+  colnames(C) = c("intercept","summer","holiday","display")
   if(any(feati!=0) & n_distinct(feati)>1){
     C = cbind(C,as.matrix(feati))
+    colnames(C) = c("intercept","summer","holiday","display","feature")
   }
-  # if(any(promo!=0) & n_distinct(promo)>1){
-  #   # C = cbind(C,as.matrix(promo))
-  #   C = cbind(C,as.matrix(feati),as.matrix(dispi))
-  # }
-  colnames(C) = NULL
   nphi = nphi + ncol(C)
   nphivec[i] = ncol(C)
   Clist[[i]] = C
 
   # test
-  # C = cbind(matrix(1,nrow=ntest),as.matrix(seasonal[-inweeks,c("SUMMER","HOLIDAY")]))
-  # C = cbind(matrix(1,nrow=ntest),as.matrix(seasonal[-inweeks,c("YEAR","QUARTER_2","QUARTER_3","QUARTER_4","HOLIDAY")]))
-  # C = cbind(matrix(1,nrow=ntest))
   C = as.matrix(cbind(rep(1,ntest),seasonal[-inweeks,c("SUMMER","HOLIDAY")],display[-inweeks,2+i]))
+  colnames(C) = c("intercept","summer","holiday","display")
   if(any(feati!=0) & n_distinct(feati)>1){
-    # C =  cbind(C,as.matrix(feature[-inweeks,2+i] + display[-inweeks,2+i]))
-    # C = cbind(C,as.matrix(feature[-inweeks,2+i]),as.matrix(display[-inweeks,2+i]))
     C = cbind(C,as.matrix(feature[-inweeks,2+i]))
+    colnames(C) = c("intercept","summer","holiday","display","feature")
   }
-  colnames(C) = NULL
   Clisttest[[i]] = C
 
 }

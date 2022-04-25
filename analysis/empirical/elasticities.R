@@ -104,7 +104,8 @@ summarize_markups = function(out_list,index,p){
 }
 
 # load data
-out_files = paste0("analysis/output/",dir(here("analysis","output")))
+all_files = dir(here("analysis","output"))
+out_files = paste0("analysis/output/",all_files[!str_detect(all_files,"sim-")])
 lapply(out_files,load,.GlobalEnv)
 
 # choose models

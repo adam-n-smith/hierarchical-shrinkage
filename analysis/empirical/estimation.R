@@ -3,8 +3,8 @@ library(Rcpp)
 library(RcppArmadillo)
 library(here)
 
-source(here("src","shrinkage-functions-nolist.R"))
-sourceCpp(here("src","shrinkage-mcmc-nolist.cpp"))
+source(here("src","shrinkage-functions.R"))
+sourceCpp(here("src","shrinkage-mcmc.cpp"))
 source(here("analysis","empirical","estimation-build.R"))
 
 # --------------------------------------------------------- #
@@ -27,7 +27,7 @@ Data = list(
 Prior = list(
   thetabar_cross = 0,
   thetabar_own = 0,
-  Aphi = .1*diag(nphi),
+  Aphi = .01*diag(nphi),
   phibar = double(nphi),
   a = 5,
   b = 5
@@ -36,7 +36,7 @@ Prior = list(
 # mcmc
 Mcmc = list(
   R = 1000,
-  keep = 5
+  keep = 1
 )
 
 out.sparse.ridge = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="ridge",print=TRUE)

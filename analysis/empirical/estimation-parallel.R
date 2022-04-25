@@ -37,209 +37,65 @@ fit_parallel = function(Data,Prior,Mcmc,beta,theta="sparse",folder){
   # save
   outname = paste("out",theta,beta,sep=".")
   assign(outname, out)
-  save(list=outname, file=here("analysis",folder,paste0(theta,"_",beta,".RData")))
+  save(list=outname, file=here("analysis",folder,paste0("out-",theta,"-",beta,".RData")))
   
   # print
   return(paste("Total time -",round((proc.time()[3]-itime)/60,2),"minutes"))
-
+  
 }
 
 # --------------------------------------------------------- #
 # run
 # --------------------------------------------------------- #
 
+# start
+registerDoParallel(9)
+
+# data
+Data = list(
+  Y = Y,
+  X = X,
+  Clist = Clist,
+  tree = tree,
+  parindextree = parindextree,
+  parindextree_own = parindextree_own,
+  npar = npar,
+  npar_own = npar_own
+)
+
+# priors
+Prior = list(
+  thetabar_cross = 0,
+  thetabar_own = 0,
+  Aphi = .01*diag(nphi),
+  phibar = double(nphi),
+  a = 5,
+  b = 5
+)
+
+# mcmc
+Mcmc = list(
+  R = 50000,
+  keep = 50
+)
+
 # models
-beta_priors = c("ridge","lasso","horseshoe")
+models = matrix(c("ridge","sparse",
+                  "lasso","sparse",
+                  "horseshoe","sparse",
+                  "ridge","ridge",
+                  "lasso","ridge",
+                  "horseshoe","ridge",
+                  "ridge","horseshoe",
+                  "lasso","horseshoe",
+                  "horseshoe","horseshoe"), ncol=2, byrow=TRUE)
 
-# mcmc
-# Mcmc = list(
-#   R = 20000,
-#   initial_run = 100,
-#   keep = 10
-# )
-Mcmc = list(
-  R = 2000,
-  initial_run = 100,
-  keep = 10
-)
-
-# --------------------------------------------------------- #
-# sparse models
-# --------------------------------------------------------- #
-
-# start
-registerDoParallel(3)
-
-# data
-Data = list(
-  Y = Y,
-  X = X,
-  Clist = Clist
-)
-
-# priors
-Prior = list(
-  Aphi = .1*diag(nphi),
-  phibar = double(nphi),
-  a = 5,
-  b = 5
-)
-
-# sparse
+# run
 print_start()
-foreach (i=1:length(beta_priors)) %dopar% {
-  fit_parallel(Data,Prior,Mcmc,beta=beta_priors[i],folder=folder)
+foreach (i=1:nrow(models)) %dopar% {
+  fit_parallel(Data,Prior,Mcmc,beta=models[i,1],theta=models[i,2],folder=folder)
 }
+writeLines(dir(here("analysis","output")), "/Users/adamsmith/Dropbox/estimation.txt")
 
-# stop
 stopImplicitCluster()
 
-# --------------------------------------------------------- #
-# hierarchical models
-# --------------------------------------------------------- #
-
-# start
-registerDoParallel(3)
-
-# data
-Data = list(
-  Y = Y,
-  X = X,
-  Clist = Clist,
-  tree = tree,
-  childrencounts = childrencounts,
-  list = list,
-  list_own = list_own,
-  npar = npar,
-  npar_own = npar_own
-)
-
-# priors
-Prior = list(
-  thetabar_cross = 0,
-  thetabar_own = 0,
-  Aphi = .1*diag(nphi),
-  phibar = double(nphi),
-  a = 5,
-  b = 5
-)
-
-# hierarchical (ridge)
-print_start()
-foreach (i=1:length(beta_priors)) %dopar% {
-  fit_parallel(Data,Prior,Mcmc,beta=beta_priors[i],theta="ridge",folder=folder)
-}
-
-# hierarchical (horseshoe)
-print_start()
-foreach (i=1:length(beta_priors)) %dopar% {
-  fit_parallel(Data,Prior,Mcmc,beta=beta_priors[i],theta="horseshoe",folder)
-}
-
-# stop
-stopImplicitCluster()
-
-
-
-
-
-
-
-
-
-
-
-
-
-# --------------------------------------------------------- #
-# all models
-# --------------------------------------------------------- #
-
-# print start time
-print_start = function(){
-  cat("Start time -",format(Sys.time(), "%I:%M%p"), "\n")
-}
-
-# wrapper
-fit_parallel = function(Data,Prior,Mcmc,model,folder){
-  
-  # start time
-  itime = proc.time()[3]
-  
-  theta = stringr::word(model,1,sep="_")
-  beta = stringr::word(model,2,sep="_")
-  
-  # run
-  if(theta=="sparse"){
-    out = rSURshrinkage(Data,Prior,Mcmc,Shrinkage=beta,print=FALSE)
-  }
-  else{
-    out = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product=beta,group=theta),print=FALSE)
-  }
-  
-  # save
-  outname = paste("out",theta,beta,sep=".")
-  assign(outname, out)
-  save(list=outname, file=here("analysis",folder,paste0(theta,"_",beta,".RData")))
-  
-  # print
-  return(paste("Total time -",round((proc.time()[3]-itime)/60,2),"minutes"))
-  
-}
-
-models = c(
-  "sparse_ridge",
-  "sparse_lasso",
-  "sparse_horseshoe",
-  "ridge_ridge",
-  "ridge_lasso",
-  "ridge_horseshoe",
-  "horseshoe_ridge",
-  "horseshoe_lasso",
-  "horseshoe_horseshoe"
-)
-
-# data
-Data = list(
-  Y = Y,
-  X = X,
-  Clist = Clist,
-  tree = tree,
-  childrencounts = childrencounts,
-  list = list,
-  list_own = list_own,
-  npar = npar,
-  npar_own = npar_own
-)
-
-# priors
-Prior = list(
-  thetabar_cross = 0,
-  thetabar_own = 0,
-  Aphi = .1*diag(nphi),
-  phibar = double(nphi),
-  a = 5,
-  b = 5
-)
-
-# mcmc
-# Mcmc = list(
-#   R = 50000,
-#   initial_run = 500,
-#   keep = 50
-# )
-Mcmc = list(
-  R = 500,
-  initial_run = 100,
-  keep = 1
-)
-
-# start
-registerDoParallel(cores=9)
-print_start()
-foreach (i=1:length(models)) %dopar% {
-  fit_parallel(Data,Prior,Mcmc,models[i],folder=folder)
-}
-
-# stop
-stopImplicitCluster()
