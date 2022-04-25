@@ -56,29 +56,41 @@ Clisttest = NULL
 nphi = 0
 nphivec = double(p)
 for(i in 1:p){
-  
+
   feati = feature[inweeks,2+i]
   dispi = display[inweeks,2+i]
   promo = feati + dispi
-  
+
   # training
-  C = cbind(matrix(1,nrow=n),as.matrix(seasonal[inweeks,c("SUMMER","HOLIDAY")]))
-  if(any(promo!=0) & n_distinct(promo)>1){
-    C = cbind(C,as.matrix(promo))
+  # C = cbind(matrix(1,nrow=n),as.matrix(seasonal[inweeks,c("SUMMER","HOLIDAY")]))
+  # C = cbind(matrix(1,nrow=n),as.matrix(seasonal[inweeks,c("YEAR","QUARTER_2","QUARTER_3","QUARTER_4","HOLIDAY")]))
+  # C = cbind(matrix(1,nrow=n))
+  # C = cbind(matrix(1,nrow=n),as.matrix(dispi))
+  C = as.matrix(cbind(rep(1,n),seasonal[inweeks,c("SUMMER","HOLIDAY")],dispi))
+  if(any(feati!=0) & n_distinct(feati)>1){
+    C = cbind(C,as.matrix(feati))
   }
+  # if(any(promo!=0) & n_distinct(promo)>1){
+  #   # C = cbind(C,as.matrix(promo))
+  #   C = cbind(C,as.matrix(feati),as.matrix(dispi))
+  # }
   colnames(C) = NULL
   nphi = nphi + ncol(C)
   nphivec[i] = ncol(C)
   Clist[[i]] = C
-  
+
   # test
-  C = matrix(1,nrow=ntest)
-  C = cbind(matrix(1,nrow=ntest),as.matrix(seasonal[-inweeks,c("SUMMER","HOLIDAY")]))
-  if(any(promo!=0) & n_distinct(promo)>1){
-    C =  cbind(C,as.matrix(feature[-inweeks,2+i] + display[-inweeks,2+i]))
+  # C = cbind(matrix(1,nrow=ntest),as.matrix(seasonal[-inweeks,c("SUMMER","HOLIDAY")]))
+  # C = cbind(matrix(1,nrow=ntest),as.matrix(seasonal[-inweeks,c("YEAR","QUARTER_2","QUARTER_3","QUARTER_4","HOLIDAY")]))
+  # C = cbind(matrix(1,nrow=ntest))
+  C = as.matrix(cbind(rep(1,ntest),seasonal[-inweeks,c("SUMMER","HOLIDAY")],display[-inweeks,2+i]))
+  if(any(feati!=0) & n_distinct(feati)>1){
+    # C =  cbind(C,as.matrix(feature[-inweeks,2+i] + display[-inweeks,2+i]))
+    # C = cbind(C,as.matrix(feature[-inweeks,2+i]),as.matrix(display[-inweeks,2+i]))
+    C = cbind(C,as.matrix(feature[-inweeks,2+i]))
   }
   colnames(C) = NULL
   Clisttest[[i]] = C
-  
+
 }
 cumnphi = c(0,cumsum(nphivec))
