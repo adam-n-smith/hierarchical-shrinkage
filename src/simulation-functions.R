@@ -2,10 +2,9 @@ library(extraDistr)
 
 # simulate data
 simdata = function(n,p,d,settings){
-
+  
   # observational error
-  # sigmasq = runif(p,0,1)
-  sigmasq = runif(p,1,1)
+  sigmasq = rep(1,p)
   Sigma = diag(sigmasq)
   
   thetalist = list()
@@ -14,47 +13,47 @@ simdata = function(n,p,d,settings){
   if(settings$type=="hierarchical"){
     
     tree = settings$tree
-    counts = settings$counts
-    list = settings$list
+    parindextree = settings$parindextree
     npar = settings$npar
     transform = settings$transform
     L = ncol(tree)
-
+    
     # global variances and initial mean
     tau = rep(1,L)
     mean = 0
     
-    # level 1
-    theta = runif(npar[1],1,3)*sample(c(1,-1),npar[1],replace=TRUE)
-    thetalist[[1]] = theta
-    lambdalist[[1]] = rep(1,npar[1])
+    # top level
+    theta = runif(npar[L],1,3)*sample(c(1,-1),npar[L],replace=TRUE)
+    thetalist[[L]] = theta
+    lambdalist[[L]] = rep(1,npar[L])
+    Psi = lambdalist[[L]] 
     
-    # levels 2-L
-    for(ell in 2:L){
+    # middle levels
+    for(ell in (L-1):1){
       
       # dummy variables indicating sparse elements
       sparse_ind = rbinom(npar[ell],1,1-settings$prop_sparse[ell])
       
-      # product of previous lambda parameters
-      Psi = create_Psi_ellmone_cpp(lambdalist,counts,list,npar,ell)
-      
-      # mean as theta from last level
-      mean = theta[list[[ell]]]
-      
       # draw local variances for current level
       lambda = rep(1,npar[ell])
+
+      # product of previous lambda parameters
+      # Psi = create_Psi_ellmone_cpp(lambdalist,counts,list,npar,ell)
+      Psi = replace_cpp(parindextree[[ell]],Psi)*lambda*sparse_ind
+      
+      # mean as theta from last level
+      mean = theta[parindextree[[ell]]]
       
       # construct theta for current level
       if(settings$transform){
-        theta = mean + sqrt(lambda*Psi*tau[ell])*rnorm(npar[ell])*sparse_ind
+        theta = mean + sqrt(Psi*tau[ell])*rnorm(npar[ell])*sparse_ind
       }
       else{
-        theta = (mean + sqrt(lambda*Psi*tau[ell])*rnorm(npar[ell]))*sparse_ind
+        theta = (mean + sqrt(Psi*tau[ell])*rnorm(npar[ell]))*sparse_ind
       }
       
       # save
       thetalist[[ell]] = theta
-      lambdalist[[ell]] = lambda*sparse_ind
     }
     
   }
@@ -64,10 +63,9 @@ simdata = function(n,p,d,settings){
     mean = 0
     tau = 1
     theta = runif(p^2-p,1,3)*sample(c(1,-1),p^2-p,replace=TRUE)*rbinom(p^2-p,1,1-settings$prop_sparse)
-    # theta = runif(p^2-p,-3,3)*rbinom(p^2-p,1,1-settings$prop_sparse)
     
   }
-
+  
   # elasticity matrix
   B = matrix(NA,p,p)
   wchown = which(diag(p)==1)
@@ -97,14 +95,14 @@ simdata = function(n,p,d,settings){
   Y = X%*%B + Cphi + error
   
   # errors at product level
-  E = matrix(NA,p,p)
-  E[!(diag(p)==1)] = theta - mean
+  Bres = matrix(NA,p,p)
+  Bres[!(diag(p)==1)] = theta - mean
   Bbar = matrix(0,p,p)
   Bbar[!(diag(p)==1)] = mean
   
   return(list(Y=Y,X=X,B=B,Clist=Clist,
-              thetalist=thetalist,lambdalist=lambdalist,tau=tau,sigmasq=sigmasq,
-              phivec=phivec,nphi=nphi,E=E,Bbar=Bbar))
+              thetalist=thetalist,tau=tau,sigmasq=sigmasq,
+              phivec=phivec,nphi=nphi,Bres=Bres,Bbar=Bbar))
   
 }
 
@@ -115,28 +113,26 @@ simdata_batch = function(n,p,rep,type,prop_sparse,transform=NULL){
   
   # generate data
   data = NULL
-
+  
   # tree for DGP
   if(type=="hierarchical"){
     
-    tree = matrix(c(rep(1:5,each=p/5),
+    tree = matrix(c(1:p,
                     rep(1:10,each=p/10),
-                    1:p),nrow=p,ncol=3)
-    counts = countchildren_cpp(tree)
-    treeindex = createindex(tree)
-    list = treeindex$list
-    list_own = treeindex$list_own
-    npar = treeindex$npar
-    npar_own = treeindex$npar_own
+                    rep(1:5,each=p/5)),nrow=p,ncol=3)
+    objects = create_treeobjects(tree)
+    parindextree = objects$parindextree
+    parindextree_own = objects$parindextree_own
+    npar = objects$npar
+    npar_own = objects$npar_own
     
     settings = list(
       type = type,
       tree = tree,
-      counts = counts,
-      list = list,
-      list_own = list_own,
       npar = npar,
       npar_own = npar_own,
+      parindextree = parindextree,
+      parindextree_own = parindextree_own,
       prop_sparse = prop_sparse,
       transform = transform
     )
@@ -159,13 +155,12 @@ simdata_batch = function(n,p,rep,type,prop_sparse,transform=NULL){
     
     if(type=="hierarchical"){
       
+      data[[b]]$tree = tree
       data[[b]]$npar = npar
       data[[b]]$npar_own = npar_own
-      data[[b]]$tree = tree
-      data[[b]]$list = list
-      data[[b]]$list_own = list_own
-      data[[b]]$childrencounts = counts
-      
+      data[[b]]$parindextree = parindextree
+      data[[b]]$parindextree_own = parindextree_own
+
     }
     
   }
@@ -173,7 +168,6 @@ simdata_batch = function(n,p,rep,type,prop_sparse,transform=NULL){
   return(data)
   
 }
-
 
 # fit models on batch data in parallel
 fit_parallel = function(DataList,Prior,Mcmc,models,dgp,tree=NULL){
@@ -186,16 +180,14 @@ fit_parallel = function(DataList,Prior,Mcmc,models,dgp,tree=NULL){
   if(is.null(tree)){
     tree = DataList[[1]]$tree
   }
-  childrencounts = countchildren_cpp(tree)
-  treeindex = createindex(tree)
-  index = treeindex$index
-  list = treeindex$list
-  list_own = treeindex$list_own
-  npar = treeindex$npar
-  npar_own = treeindex$npar_own
+  objects = create_treeobjects(tree)
+  parindextree = objects$parindextree
+  parindextree_own = objects$parindextree_own
+  npar = objects$npar
+  npar_own = objects$npar_own
   L = ncol(tree)
   p = nrow(tree)
-
+  
   # start estimation loop
   pb = txtProgressBar(max=rep*nrow(models), style=3)
   progress = function(itr) setTxtProgressBar(pb, itr)
@@ -209,7 +201,7 @@ fit_parallel = function(DataList,Prior,Mcmc,models,dgp,tree=NULL){
               sourceCpp(here("src","shrinkage-mcmc.cpp"))
               
               data = DataList[[b]]
-
+              
               # fit model
               if(models[m,2]=="sparse"){
                 Data = list(
@@ -220,19 +212,18 @@ fit_parallel = function(DataList,Prior,Mcmc,models,dgp,tree=NULL){
                 fit = rSURshrinkage(Data,Prior,Mcmc,Shrinkage=models[m,1],print=FALSE)
               }
               else{
-                
+
                 Data = list(
-                  Y=data$Y,
-                  X=data$X,
-                  Clist=data$Clist,
-                  tree=tree,
-                  childrencounts=childrencounts,
-                  list=list,
-                  list_own=list_own,
-                  npar=npar,
-                  npar_own=npar_own
+                  Y = data$Y,
+                  X = data$X,
+                  Clist = data$Clist,
+                  tree = tree,
+                  parindextree = parindextree,
+                  parindextree_own = parindextree_own,
+                  npar = npar,
+                  npar_own = npar_own
                 )
-                
+
                 fit = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product=models[m,1],group=models[m,2]),
                                         print=FALSE)
               }
@@ -244,11 +235,11 @@ fit_parallel = function(DataList,Prior,Mcmc,models,dgp,tree=NULL){
                 Brmse[r] = sqrt(mean((data$B-B)^2))
               }
               rmse = mean(Brmse)
-              
+
               # compute share of correct signs
               B = apply(fit$betadraws[burn:end,],2,mean)
               sign = mean(sign(data$B[data$B!=0])==sign(B[as.vector(data$B!=0)]))
-              
+
               # save
               c(rmse,sign)
             }
@@ -261,5 +252,3 @@ fit_parallel = function(DataList,Prior,Mcmc,models,dgp,tree=NULL){
   return(out)
   
 }
-
-

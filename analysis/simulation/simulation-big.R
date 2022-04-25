@@ -6,39 +6,22 @@ library(doSNOW)
 library(here)
 library(xtable)
 library(snakecase)
-library(mclust)
 
 source(here("src","simulation-functions.R"))
 source(here("src","shrinkage-functions.R"))
 sourceCpp(here("src","shrinkage-mcmc.cpp"))
 
-# ------------------------------------------------------------- #
-# generate data sets (n=50, p=100)
-# ------------------------------------------------------------- #
-
+# generate data
 set.seed(1)
-n = 50
-p = 100
-rep = 25
-data = list(
+n = 100
+p = 300
+rep = 1
+data_big = list(
   dense.dense = simdata_batch(n,p,rep,"hierarchical",prop_sparse=c(0,0,0),transform=FALSE),
   dense.transform = simdata_batch(n,p,rep,"hierarchical",prop_sparse=c(0.75,0,0),transform=TRUE),
   sparse.sparse = simdata_batch(n,p,rep,"hierarchical",prop_sparse=c(0,0.75,0),transform=FALSE),
   sparse = simdata_batch(n,p,rep,"sparse",prop_sparse=0.95)
 )
-tree_true = data$dense.dense[[1]]$tree
-
-# models to fit
-models = matrix(c("ridge","sparse",
-                  "lasso","sparse",
-                  "horseshoe","sparse",
-                  "ridge","ridge",
-                  "lasso","ridge",
-                  "horseshoe","ridge",
-                  "ridge","horseshoe",
-                  "lasso","horseshoe",
-                  "horseshoe","horseshoe"),
-                ncol=2,byrow=TRUE)
 
 # Prior
 Prior = list(
@@ -52,29 +35,37 @@ Prior = list(
 
 # Mcmc
 Mcmc = list(
-  R = 5000,
-  keep = 5,
+  R = 40000,
+  keep = 40,
   burn_pct = 0.75
 )
+
+# models to fit
+models = matrix(c("ridge","sparse",
+                  "lasso","sparse",
+                  "horseshoe","sparse",
+                  "ridge","ridge",
+                  "lasso","ridge",
+                  "horseshoe","ridge",
+                  "ridge","horseshoe",
+                  "lasso","horseshoe",
+                  "horseshoe","horseshoe"),
+                ncol=2,byrow=TRUE)
 
 # initialize clusters
 ncores = min(parallel::detectCores(),15)
 cl = makeSOCKcluster(ncores)
 registerDoSNOW(cl)
 
-# ------------------------------------------------------------- #
-# main simulations table
-# ------------------------------------------------------------- #
-
 # fit models across all dgps
-fit1 = fit_parallel(data$dense.dense,Prior,Mcmc,models,dgp="dense.dense",tree=tree_true)
-fit2 = fit_parallel(data$dense.transform,Prior,Mcmc,models,dgp="dense.transform",tree=tree_true)
-fit3 = fit_parallel(data$sparse.sparse,Prior,Mcmc,models,dgp="sparse.sparse",tree=tree_true)
-fit4 = fit_parallel(data$sparse,Prior,Mcmc,models,dgp="sparse.sparse",tree=tree_true)
-fit = cbind(fit1,fit2,fit3,fit4)
+fitbig1 = fit_parallel(data_big$dense.dense,Prior,Mcmc,models,dgp="dense.dense")
+fitbig2 = fit_parallel(data_big$dense.transform,Prior,Mcmc,models,dgp="dense.transform")
+fitbig3 = fit_parallel(data_big$sparse.sparse,Prior,Mcmc,models,dgp="sparse.sparse")
+fitbig4 = fit_parallel(data_big$sparse,Prior,Mcmc,models,dgp="sparse",tree=data_big$dense.dense[[1]]$tree)
+fitbig = cbind(fitbig1,fitbig2,fitbig3,fitbig4)
 
 # print results
-out = data.frame(fit) %>%
+out_big = data.frame(fitbig) %>%
   # add model labels
   mutate(shrinkage = rep(paste0(to_any_case(models[,2],case="upper_camel"),"/",
                                 to_any_case(models[,1],case="upper_camel")),rep),
@@ -90,10 +81,11 @@ out = data.frame(fit) %>%
   # add bold to 
   mutate(across(starts_with("rmse_"),function(x)ifelse(x==min(x),paste("\\bf",sprintf("%.3f",x)),sprintf("%.3f",x))))
 
-out
-print(xtable(out),include.rownames=FALSE, sanitize.text.function=identity)
-save(n,p,rep,data,models,Prior,Mcmc,fit,fit1,fit2,fit3,fit4,out,tree_true,
-     file="analysis/simulation/output/sim-main.RData")
+out_big
+print(xtable(out_big),include.rownames=FALSE, sanitize.text.function=identity)
+save(n,p,rep,data_big,models,Prior,Mcmc,fitbig,fitbig1,fitbig2,fitbig3,fitbig4,out_big,
+     file="analysis/simulation/output/sim-big.RData")
 
 # stop
 stopCluster(cl)
+

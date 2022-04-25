@@ -1,10 +1,24 @@
 library(gtools)
 library(prodlim)
 
-createindex = function(tree){
+
+create_treeobjects = function(tree){
   
   # number of levels
   L = ncol(tree)
+  p = nrow(tree)
+  
+  # number of parameters per level
+  npar = apply(tree,2,max)^2
+  npar[1] = npar[1] - p
+  npar = c(npar,1)
+  
+  # number of parameters per level
+  npar_own = apply(tree,2,max)
+  npar_own = c(npar_own,1)
+  
+  # reverse
+  tree = tree[,L:1]
   
   # index positions of each element from current parameter vector
   K = max(tree[,1])
@@ -16,70 +30,42 @@ createindex = function(tree){
   
   # repeat for the remaining levels
   if(L>1){
+    
+    # group-level parameters assumed to be asymmetric, use "combinations" to assume symmetry
     for(i in 2:L){
+      
       subtree = unique(tree[,1:i])
       K = max(subtree)
       
-      # group-level parameters assumed to be assumtric, use "combinations" to assume symmetry
+      # index positions of each element from current parameter vector
+      indexpair = permutations(K,2,1:K,repeats.allowed=TRUE)
+      
+      # index positions of each element from last level's parameter vector
+      indexpairlast = permutations(max(tree[,i-1]),2,1:max(tree[,i-1]),repeats.allowed=TRUE)
+      
+      # match current positions with last positions
+      index = matrix(subtree[indexpair,i-1],ncol=2)
+      match = apply(index,1,function(x)row.match(x,data.frame(indexpairlast)))
+      
       if(i<L){
-        
-        # index positions of each element from current parameter vector
-        indexpair = permutations(K,2,1:K,repeats.allowed=TRUE)
-        
-        # index positions of each element from last level's parameter vector
-        indexpairlast = permutations(max(tree[,i-1]),2,1:max(tree[,i-1]),repeats.allowed=TRUE)
-        
-        # match current positions with last positions
-        index = matrix(subtree[indexpair,i-1],ncol=2)
-        match = apply(index,1,function(x)row.match(x,data.frame(indexpairlast)))
         out[[i]] = match
       }
-      
-      # SKU-level parameters
       else{
-        
-        # index positions of each element from current parameter vector
-        indexpair = permutations(K,2,1:K,repeats.allowed=TRUE)
-        
-        # index positions of each element from last level's parameter vector
-        indexpairlast = permutations(max(tree[,i-1]),2,1:max(tree[,i-1]),repeats.allowed=TRUE)
-        
-        # match current positions with last positions
-        index = matrix(subtree[indexpair,i-1],ncol=2)
-        match = apply(index,1,function(x)row.match(x,data.frame(indexpairlast)))
-        
-        # ignore own elasticities
         own = apply(indexpair,1,function(x)x[1]==x[2])
         out[[i]] = match[!own]
       }
+      
     }
     
   }
   
-  # save parameter index matrix
-  l = out[[L]]
-  index = l
-  if(L>1){
-    for(i in (L-1):1){
-      l = out[[i]][l]
-      index = rbind(l,index)
-    }
-  }
-  rownames(index) = NULL
-  
-  # number of parameters per level
-  npar = apply(index,1,max)
-  if(L>1){
-    npar = c(npar[-1],ncol(index))
-  }
-  
   # list for own parameters
-  list_own = list(L)
-  list_own[[1]] = rep(1,max(tree[,1]))
+  out_own = list(L)
+  out_own[[1]] = rep(1,max(tree[,1]))
   for(l in 1:(L-1)){
-    list_own[[l+1]] = unique(tree[,1:(l+1)])[,l]
+    out_own[[l+1]] = unique(tree[,1:(l+1)])[,l]
   }
   
-  return(list(list=out,list_own=list_own,npar=npar,npar_own=apply(tree,2,max),index=index))
+  return(list(npar=npar,npar_own=npar_own,parindextree=rev(out),parindextree_own=rev(out_own)))
   
 }
