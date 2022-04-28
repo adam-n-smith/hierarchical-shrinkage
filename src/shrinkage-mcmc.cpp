@@ -632,28 +632,32 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
   uvec wchown = find(eye<mat>(p,p)==1);
   uvec wchcross = find(eye<mat>(p,p)==0);
   
-  // initial values: product elasticities
-  vec beta = vectorise(inv(trans(X)*X+0.1*eye(p,p))*trans(X)*Y);
-  
-  // initial values: cross elasticities
-  vec theta = zeros(sum(npar));
-  theta(sum(npar)-1) = thetabar_cross;
-  theta(span(0,npar(0)-1)) = beta(wchcross);
+  // initial values: variances - cross elasticities
   vec lambdasq = ones(sum(npar));
   vec xilambda = ones(sum(npar));
   vec Psi = ones(sum(npar));
   vec tausq = ones(L);
   vec xitau = ones(L);
   
-  // initial values: own elasticities
-  vec theta_own = zeros(sum(npar_own));
-  theta_own(sum(npar_own)-1) = thetabar_own;
-  theta_own(span(0,npar_own(0)-1)) = beta(wchown);
+  // initial values: variances - own elasticities
   vec lambdasq_own = ones(sum(npar_own));
   vec xilambda_own = ones(sum(npar_own));
   vec Psi_own = ones(sum(npar_own));
   vec tausq_own = ones(L);
   vec xitau_own = ones(L);
+  
+  // initial values: elasticities
+  vec beta = vectorise(inv(trans(X)*X+0.1*eye(p,p))*trans(X)*Y);
+  vec theta = zeros(sum(npar));
+  vec theta_own = zeros(sum(npar_own));
+  theta(span(0,npar(0)-1)) = beta(wchcross);
+  theta_own(span(0,npar_own(0)-1)) = beta(wchown);
+  for(int ell=1; ell<L;ell++){
+    theta(span(begindex(ell),endindex(ell))) = draw_theta(ell, npar, parindextree, theta, Psi, tausq);
+    theta_own(span(begindex_own(ell),endindex_own(ell))) = draw_theta(ell, npar_own, parindextree_own, theta_own, Psi_own, tausq_own);
+  }
+  theta(sum(npar)-1) = thetabar_cross;
+  theta_own(sum(npar_own)-1) = thetabar_own;
   
   // initial values: everything else
   vec xi = zeros(p*p);
