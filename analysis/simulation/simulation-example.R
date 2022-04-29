@@ -92,6 +92,14 @@ end = Mcmc$R/Mcmc$keep
 burn = 0.5*end
 cumnpar = cumsum(npar[-1])
 
+# rmse
+Brmse = double(end-burn)
+for(r in 1:(end-burn)){
+  B = matrix(out$betadraws[burn+r,],p,p)
+  Brmse[r] = sqrt(mean((data$B-B)^2))
+}
+mean(Brmse)
+
 # theta - top
 matplot(out$thetadraws[,(cumnpar[1]+1):cumnpar[2]],type="l",col=rainbow(npar[3]))
 abline(h=data$thetalist[[3]],col=rainbow(npar[3]))

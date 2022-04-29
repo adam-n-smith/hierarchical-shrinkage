@@ -35,13 +35,13 @@ Prior = list(
 
 # Mcmc
 Mcmc = list(
-  R = 40000,
-  keep = 40,
+  R = 80000,
+  keep = 80,
   burn_pct = 0.75
 )
 
 # models to fit
-models = matrix(c("ridge","sparse",
+Models = matrix(c("ridge","sparse",
                   "lasso","sparse",
                   "horseshoe","sparse",
                   "ridge","ridge",
@@ -58,17 +58,17 @@ cl = makeSOCKcluster(ncores)
 registerDoSNOW(cl)
 
 # fit models across all dgps
-fitbig1 = fit_parallel(data_big$dense.dense,Prior,Mcmc,models,dgp="dense.dense")
-fitbig2 = fit_parallel(data_big$dense.transform,Prior,Mcmc,models,dgp="dense.transform")
-fitbig3 = fit_parallel(data_big$sparse.sparse,Prior,Mcmc,models,dgp="sparse.sparse")
-fitbig4 = fit_parallel(data_big$sparse,Prior,Mcmc,models,dgp="sparse",tree=data_big$dense.dense[[1]]$tree)
+fitbig1 = fit_parallel(data_big$dense.dense,Prior,Mcmc,Models,dgp="dense.dense")
+fitbig2 = fit_parallel(data_big$dense.transform,Prior,Mcmc,Models,dgp="dense.transform")
+fitbig3 = fit_parallel(data_big$sparse.sparse,Prior,Mcmc,Models,dgp="sparse.sparse")
+fitbig4 = fit_parallel(data_big$sparse,Prior,Mcmc,Models,dgp="sparse",tree=data_big$dense.dense[[1]]$tree)
 fitbig = cbind(fitbig1,fitbig2,fitbig3,fitbig4)
 
 # print results
 out_big = data.frame(fitbig) %>%
   # add model labels
-  mutate(shrinkage = rep(paste0(to_any_case(models[,2],case="upper_camel"),"/",
-                                to_any_case(models[,1],case="upper_camel")),rep),
+  mutate(shrinkage = rep(paste0(to_any_case(Models[,2],case="upper_camel"),"/",
+                                to_any_case(Models[,1],case="upper_camel")),rep),
          shrinkage = factor(shrinkage,levels=unique(shrinkage))) %>%
   # compute means across data replicates
   group_by(shrinkage) %>%
@@ -83,7 +83,7 @@ out_big = data.frame(fitbig) %>%
 
 out_big
 print(xtable(out_big),include.rownames=FALSE, sanitize.text.function=identity)
-save(n,p,rep,data_big,models,Prior,Mcmc,fitbig,fitbig1,fitbig2,fitbig3,fitbig4,out_big,
+save(n,p,rep,data_big,Models,Prior,Mcmc,fitbig,fitbig1,fitbig2,fitbig3,fitbig4,out_big,
      file="analysis/simulation/output/sim-big.RData")
 
 # stop
