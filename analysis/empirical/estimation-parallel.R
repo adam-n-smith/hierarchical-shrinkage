@@ -3,6 +3,7 @@ library(Rcpp)
 library(RcppArmadillo)
 library(foreach)
 library(doParallel)
+library(doSNOW)
 library(here)
 
 sourceCpp(here("src","shrinkage-mcmc.cpp"))
@@ -21,7 +22,7 @@ print_start = function(){
 }
 
 # wrapper
-fit_parallel = function(Data,Prior,Mcmc,beta,theta="sparse",folder){
+fit_parallel = function(Data,Prior,Mcmc,beta,theta="sparse",path){
   
   # start time
   itime = proc.time()[3]
@@ -37,7 +38,7 @@ fit_parallel = function(Data,Prior,Mcmc,beta,theta="sparse",folder){
   # save
   outname = paste("out",theta,beta,sep=".")
   assign(outname, out)
-  save(list=outname, file=here("analysis",folder,paste0("out-",theta,"-",beta,".RData")))
+  save(list=outname, file=paste0(path,"/out-",theta,"-",beta,".RData"))
   
   # print
   return(paste("Total time -",round((proc.time()[3]-itime)/60,2),"minutes"))
@@ -47,9 +48,6 @@ fit_parallel = function(Data,Prior,Mcmc,beta,theta="sparse",folder){
 # --------------------------------------------------------- #
 # run
 # --------------------------------------------------------- #
-
-# start
-registerDoParallel(9)
 
 # data
 Data = list(
@@ -75,12 +73,12 @@ Prior = list(
 
 # mcmc
 Mcmc = list(
-  R = 50000,
-  keep = 50
+  R = 100000,
+  keep = 100
 )
 
 # models
-models = matrix(c("ridge","sparse",
+Models = matrix(c("ridge","sparse",
                   "lasso","sparse",
                   "horseshoe","sparse",
                   "ridge","ridge",
@@ -91,11 +89,11 @@ models = matrix(c("ridge","sparse",
                   "horseshoe","horseshoe"), ncol=2, byrow=TRUE)
 
 # run
+cl = makeSOCKcluster(9)
+registerDoSNOW(cl)
 print_start()
-foreach (i=1:nrow(models)) %dopar% {
-  fit_parallel(Data,Prior,Mcmc,beta=models[i,1],theta=models[i,2],folder=folder)
+foreach(i=1:nrow(Models), .packages=c("Rcpp","RcppArmadillo","here"), .noexport=c("rSURshrinkage","rSURhiershrinkage")) %dopar% {
+  sourceCpp(here("src","shrinkage-mcmc.cpp"))
+  fit_parallel(Data,Prior,Mcmc,beta=Models[i,1],theta=Models[i,2],path=here("analysis",folder))
 }
-writeLines(dir(here("analysis","output")), "/Users/adamsmith/Dropbox/estimation.txt")
-
-stopImplicitCluster()
-
+stopCluster(cl)

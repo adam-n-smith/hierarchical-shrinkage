@@ -35,13 +35,13 @@ Prior = list(
 
 # mcmc
 Mcmc = list(
-  R = 1000,
+  R = 500,
   keep = 1
 )
 
 out.sparse.ridge = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="ridge",print=TRUE)
 out.sparse.lasso = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="lasso",print=TRUE)
-out.sparse.horse = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="horseshoe",print=TRUE)
+out.sparse.horseshoe = rSURshrinkage(Data,Prior,Mcmc,Shrinkage="horseshoe",print=TRUE)
 
 out.ridge.ridge = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="ridge",group="ridge"),print=TRUE)
 out.ridge.lasso = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(product="lasso",group="ridge"),print=TRUE)
@@ -55,75 +55,53 @@ out.horseshoe.horseshoe = rSURhiershrinkage(Data,Prior,Mcmc,Shrinkage=list(produ
 # visualization
 # --------------------------------------------------------- #
 
+wchown = as.vector(diag(p)==1)
 end = Mcmc$R/Mcmc$keep
 burn = 0.5*end
 
-out = out.sparse.ridge
-# out = out.sparse.lasso
-# out = out.sparse.horseshoe
-out = out.ridge.ridge
-# out = out.ridge.lasso
-# out = out.ridge.horseshoe
-# out = out.horseshoe.ridge
-# out = out.horseshoe.lasso
-# out = out.horseshoe.horseshoe
+beta.sparse.ridge = apply(out.sparse.ridge$betadraws[burn:end,],2,mean)
+hist(beta.sparse.ridge[wchown], main="Own Elasticities",xlim=c(-8,4))
+summary(beta.sparse.ridge[wchown])
+# hist(beta.sparse.ridge[-wchown], main="Cross Elasticities",xlim=c(-2,2),breaks=20)
+# summary(beta.sparse.ridge[-wchown])
 
-# theta (own effects)
-matplot(out$thetaowndraws[,1:npar_own[1]],type="l",col=rainbow(npar_own[1]))
-matplot(out$thetaowndraws[,(npar_own[1]+1):cumsum(npar_own)[2]],type="l",col=rainbow(npar_own[2]))
-matplot(out$thetaowndraws[,(cumsum(npar_own)[2]+1):cumsum(npar_own)[3]],type="l",col=rainbow(p))
+beta.ridge.ridge = apply(out.ridge.ridge$betadraws[burn:end,],2,mean)
+hist(beta.ridge.ridge[wchown], main="Own Elasticities",xlim=c(-8,4))
+summary(beta.ridge.ridge[wchown])
+# hist(beta.ridge.ridge[-wchown], main="Cross Elasticities",xlim=c(-2,2),breaks=20)
+# summary(beta.ridge.ridge[-wchown])
 
-# thetas (cross effects)
-matplot(out$thetadraws[,1:npar[1]],type="l",col=1:npar[1])
-for(i in 1:npar[1]){
-  plot(out$thetadraws[,i],type="l")
-  abline(h=0)
-}
-matplot(out$thetadraws[,(cumsum(npar)[1]+1):cumsum(npar)[2]],type="l")
-matplot(out$thetadraws[,284:300],type="l")
+plot(beta.sparse.ridge,beta.ridge.ridge,col=wchown+1,pch=16)
+abline(0,1)
 
-# beta
-wchown = as.vector(diag(p)==1)
-hist(apply(out$betadraws[,wchown],2,mean), main="Own Elasticities")
-hist(apply(out$betadraws[,!wchown],2,mean), main="Cross Elasticities")
+# top
+wchtop = (cumsum(npar_own[-1])[1]+1):cumsum(npar_own[-1])[2]
+matplot(out.ridge.ridge$thetaowndraws[,wchtop],type="l")
+data.frame(name = unique(tree_names$LARGE_CATEGORY),
+           theta = apply(as.matrix(out.ridge.ridge$thetaowndraws[burn:end,wchtop]),2,mean))
 
-summary(apply(out$betadraws[,wchown],2,mean))
+# middle
+wchmid = 1:cumsum(npar_own[-1])[1]
+matplot(out.ridge.ridge$thetaowndraws[,wchmid],type="l")
+data.frame(name = unique(tree_names$SMALL_CATEGORY),
+           theta = apply(out.ridge.ridge$thetaowndraws[burn:end,wchmid],2,mean))
 
+# UPC
+matplot(out.sparse.ridge$betadraws[,wchown],type="l")
+summary(apply(out.sparse.ridge$betadraws[,wchown],2,mean))
+matplot(out.ridge.ridge$betadraws[,wchown],type="l")
+summary(apply(out.ridge.ridge$betadraws[,wchown],2,mean))
 
+# tausq (own)
+matplot(log(out.sparse.ridge$tausqowndraws),type="l")
+matplot(log(out.ridge.ridge$tausqowndraws),type="l")
 
-
-
-data.frame(out$betadraws[,wchown]) %>%
-  summarise(across(everything(),
-                   list(mean=mean, low=~quantile(.,0.025), high=~quantile(.,0.975)))) %>%
-  pivot_longer(everything(),
-               names_to = c("set",".value"),
-               names_pattern = "(.*)_(.*)") %>%
-  mutate(significant = ifelse(low<0 & high>0,"no","yes")) %>%
-  ggplot(aes(x=mean, fill=significant)) +
-  geom_histogram() +
-  xlim(-7.5,2.5)
-
-# sigmasq
-matplot(sqrt(out$sigmasqdraws),type="l")
-hist(apply(out$sigmasqdraws,2,mean))
-
-# tau
-matplot(sqrt(out$taudraws),type="l")
-matplot(sqrt(out$tauowndraws),type="l")
-matplot(log(out$taudraws),type="l")
-matplot(log(out$tauowndraws),type="l")
-
-# plot shrinkage
-# lambdahat = apply(out$lambdadraws[burn:end,1:npar[1]],2,mean)
-# tauhat = mean(out$taudraws[burn:end,1])
-# lambdahat = apply(out$lambdadraws[burn:end,(cumsum(npar)[1]+1):cumsum(npar)[2]],2,mean)
-# tauhat = mean(out$taudraws[burn:end,2])
-lambdahat = apply(out$lambdadraws[burn:end,(cumsum(npar)[2]+1):cumsum(npar)[3]],2,mean)
-tauhat = mean(out$taudraws[burn:end,3])
-kappa = 1/(1+lambdahat*tauhat)
-hist(kappa)
+# tausq (cross)
+matplot(log(out.sparse.ridge$tausqdraws),type="l")
+matplot(log(out.ridge.ridge$tausqdraws),type="l")
 
 # phi (promos)
-phi = apply(out$phidraws[burn:end,cumsum(nphivec)[nphivec==max(nphivec)]],2,mean)
+phi = apply(out.sparse.ridge$phidraws[burn:end,cumsum(nphivec)[nphivec==max(nphivec)]],2,mean)
+hist(phi)
+phi = apply(out.ridge.ridge$phidraws[burn:end,cumsum(nphivec)[nphivec==max(nphivec)]],2,mean)
 hist(phi)

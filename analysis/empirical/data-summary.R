@@ -10,7 +10,6 @@ panel %>%
   labs(x="") +
   scale_x_date(date_breaks = "4 months", labels = date_format("%m-%Y")) +
   facet_wrap(LARGE_CATEGORY~., scales="free") + 
-  theme_minimal() +
   theme(axis.text.x = element_text(angle=90))
 
 # quantities
@@ -21,21 +20,13 @@ panel %>%
   labs(x="") +
   scale_x_date(date_breaks = "4 months", labels = date_format("%m-%Y")) +
   facet_wrap(LARGE_CATEGORY~., scales="free") +
-  theme_minimal() +
   theme(axis.text.x = element_text(angle=90))
 
 # price vs. demand
 panel %>%
   ggplot(aes(x=log(PRICE), y=log(UNITS),color=SMALL_CATEGORY)) + 
   geom_point(show.legend=FALSE) + 
-  facet_wrap(LARGE_CATEGORY~., scales="free") +
-  theme_minimal() 
-panel %>%
-  ggplot(aes(x=log(PRICE), y=log(UNITS),color=interaction(SMALL_CATEGORY,BRAND))) + 
-  geom_point(show.legend=FALSE) + 
-  facet_wrap(LARGE_CATEGORY~., scales="free") + 
-  theme_minimal() + 
-  theme(strip.text.x = element_text(face="bold"))
+  facet_wrap(vars(LARGE_CATEGORY), scales="free")
 
 # regressions
 reg = panel %>%
@@ -47,3 +38,4 @@ reg %>%
   ggplot(aes(x=estimate,fill=p.value<0.05)) + 
   geom_histogram() +
   xlim(-10,10)
+summary(reg %>% filter(str_detect(term,"PRICE")) %>% pull(estimate))

@@ -15,10 +15,10 @@
 build/*
 
 # saved model objects
+analysis/empirical/*
+analysis/simulation/*
+!analysis/simulation/simulation-example.R
 analysis/output/*
-analysis/tmp/*
-analysis/simulation/output/*
-analysis/empirical/output/*
 
 # miscellaneous
 .DS_Store

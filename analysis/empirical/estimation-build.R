@@ -59,7 +59,6 @@ for(i in 1:p){
 
   feati = feature[inweeks,2+i]
   dispi = display[inweeks,2+i]
-  promo = feati + dispi
 
   # training
   C = as.matrix(cbind(rep(1,n),seasonal[inweeks,c("SUMMER","HOLIDAY")],dispi))

@@ -6,6 +6,7 @@ library(here)
 
 source(here("src","simulation-functions.R"))
 source(here("src","shrinkage-functions.R"))
+source(here("src","summary-functions.R"))
 sourceCpp(here("src","shrinkage-mcmc.cpp"))
 
 # ---------------------------------------------------------------------------- #
@@ -68,29 +69,31 @@ Prior = list(
 
 # mcmc
 Mcmc = list(
-  R = 1000,
-  keep = 1
+  R = 10000,
+  keep = 10
 )
+end = Mcmc$R/Mcmc$keep
+burn = 0.5*end
+cumnpar = cumsum(npar[-1])
 
-out = rSURshrinkage(Data, Prior, Mcmc, Shrinkage="ridge",print=TRUE)
-out = rSURshrinkage(Data, Prior, Mcmc, Shrinkage="lasso",print=TRUE)
-out = rSURshrinkage(Data, Prior, Mcmc, Shrinkage="horseshoe",print=TRUE)
+out.sparse.ridge = rSURshrinkage(Data, Prior, Mcmc, Shrinkage="ridge",print=TRUE)
+out.sparse.lasso = rSURshrinkage(Data, Prior, Mcmc, Shrinkage="lasso",print=TRUE)
+out.sparse.horseshoe = rSURshrinkage(Data, Prior, Mcmc, Shrinkage="horseshoe",print=TRUE)
 
-out = rSURhiershrinkage(Data, Prior, Mcmc, Shrinkage=list(product="ridge",group="ridge"),print=TRUE)
-out = rSURhiershrinkage(Data, Prior, Mcmc, Shrinkage=list(product="lasso",group="ridge"),print=TRUE)
-out = rSURhiershrinkage(Data, Prior, Mcmc, Shrinkage=list(product="horseshoe",group="ridge"),print=TRUE)
+out.ridge.ridge = rSURhiershrinkage(Data, Prior, Mcmc, Shrinkage=list(product="ridge",group="ridge"),print=TRUE)
+out.ridge.lasso = rSURhiershrinkage(Data, Prior, Mcmc, Shrinkage=list(product="lasso",group="ridge"),print=TRUE)
+out.ridge.horseshoe = rSURhiershrinkage(Data, Prior, Mcmc, Shrinkage=list(product="horseshoe",group="ridge"),print=TRUE)
 
-out = rSURhiershrinkage(Data, Prior, Mcmc, Shrinkage=list(product="ridge",group="horseshoe"),print=TRUE)
-out = rSURhiershrinkage(Data, Prior, Mcmc, Shrinkage=list(product="lasso",group="horseshoe"),print=TRUE)
-out = rSURhiershrinkage(Data, Prior, Mcmc, Shrinkage=list(product="horseshoe",group="horseshoe"),print=TRUE)
+out.horseshoe.ridge = rSURhiershrinkage(Data, Prior, Mcmc, Shrinkage=list(product="ridge",group="horseshoe"),print=TRUE)
+out.horseshoe.laso = rSURhiershrinkage(Data, Prior, Mcmc, Shrinkage=list(product="lasso",group="horseshoe"),print=TRUE)
+out.horseshoe.horseshoe = rSURhiershrinkage(Data, Prior, Mcmc, Shrinkage=list(product="horseshoe",group="horseshoe"),print=TRUE)
 
 # ---------------------------------------------------------------------------- #
 # model summary
 # ---------------------------------------------------------------------------- #
 
-end = Mcmc$R/Mcmc$keep
-burn = 0.5*end
-cumnpar = cumsum(npar[-1])
+# choose model
+out = out.ridge.ridge
 
 # rmse
 Brmse = double(end-burn)
@@ -133,3 +136,46 @@ abline(0,1)
 # plot shrinkage
 kappa = apply(1/(1+out$tausqdraws[burn:end,1]*out$Psidraws[burn:end,1:p^2]),2,mean)
 hist(kappa)
+
+# ---------------------------------------------------------------------------- #
+# plot means and confidence intervals (hierarchical vs. standard)
+# ---------------------------------------------------------------------------- #
+
+model_hierarchical = list(out.ridge.ridge = out.ridge.ridge)
+model_standard = list(out.sparse.ridge = out.sparse.ridge)
+
+# compute means and credible intervals
+par_top = summarize_elasticities_higher(model_hierarchical,burn:end,p,(cumnpar[1]+1):(cumnpar[2])) 
+par_mid = summarize_elasticities_higher(model_hierarchical,burn:end,p,1:cumnpar[1]) 
+par_bot = summarize_elasticities(model_hierarchical,burn:end,p) 
+par_std = summarize_elasticities(model_standard,burn:end,p) 
+par_true = c(data$thetalist[[3]],data$thetalist[[2]],data$B)
+level_names = c("Hierarchical Shrinkage\ntheta (top level)",
+                "Hierarchical Shrinkage\ntheta (middle level)",
+                "Hierarchical Shrinkage\nbeta")
+
+# tables
+df.ridge.ridge = par_top %>%
+  bind_rows(par_mid) %>%
+  bind_rows(par_bot) %>%
+  mutate(true = rep(par_true,each=length(models)),
+         level = rep(level_names, length(models)*c(npar[3],npar[2],p^2))) %>%
+  formatout(.,"plot","wrap")
+df.sparse.ridge = par_std %>%
+  mutate(true = as.vector(data$B),
+         level = "Standard Shrinkage\nbeta") %>%
+  formatout(.,"plot","wrap")
+df = df.ridge.ridge %>%
+  bind_rows(df.sparse.ridge) %>%
+  mutate(level = factor(level,levels=unique(level)))
+
+# plot
+ggplot(df,aes(x=true,y=mean)) + 
+  geom_segment(aes(x=true,xend=true,y=lower,yend=upper),color=4,lwd=1,alpha=0.25) +
+  geom_point(size=0.25) +
+  geom_abline(aes(intercept=0,slope=1)) +
+  labs(x="true value", y="posterior mean") +
+  facet_wrap(.~level, scales="free",nrow=1, labeller = ) +
+  theme_shrink() + 
+  theme(strip.text.x = element_text(size=11))
+

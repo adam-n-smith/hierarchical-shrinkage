@@ -1,8 +1,11 @@
 // [[Rcpp::depends(RcppArmadillo)]]
-// #define ARMA_DONT_PRINT_ERRORS
+#define ARMA_USE_BLAS
 #include <RcppArmadillo.h>
 using namespace arma;
 using namespace Rcpp;
+
+double cutmin = 1.0e-6;
+double cutmax = 1.0e6;
 
 // ---------------------------------------------------------------------- //
 // data manipulation functions
@@ -10,13 +13,11 @@ using namespace Rcpp;
 
 // replace function
 //[[Rcpp::export]]
-vec replace_cpp(vec const& x, vec const& y){
-  
-  int n = y.n_elem;
-  vec output(x.n_elem);
-  std::copy(x.begin(), x.end(), output.begin());
+vec replace_cpp(uvec const& index, vec const& y){
+  int n = index.n_elem;
+  vec output(n);
   for(int i=0;i<n;i++){
-    output(find(x==i+1)).fill(y(i));
+    output(i) = y(index(i)-1);
   }
   return output;
 }
@@ -25,8 +26,8 @@ vec replace_cpp(vec const& x, vec const& y){
 mat unique_rows(mat const& m) {
   
   uvec ulmt = zeros<arma::uvec>(m.n_rows);
-  for(uword i = 0; i < m.n_rows; i++) {
-    for(uword j = i + 1; j < m.n_rows; j++) {
+  for(uword i=0; i < m.n_rows; i++) {
+    for(uword j=i+1; j<m.n_rows; j++) {
       if (all(m.row(i)==m.row(j))) { ulmt(j) = 1; break; }
     }
   }
@@ -85,8 +86,8 @@ List countchildren(mat const& tree, bool const& own){
 }
 
 // compute sums of x for each group
-vec groupsum_cpp(vec const& x, vec const& groups, int const& n){
-  vec output = zeros(n);
+vec groupsum_cpp(vec const& x, uvec const& groups, int const& n){
+  vec output(n);
   for(int j=0;j<n;j++){
     output(j) = sum(x(find(groups==j+1)));
   }
@@ -130,12 +131,12 @@ vec randig(int const& n, vec const& shape, vec const& scale){
   // if X ~ Gamma(shape,rate) then 1/X ~ InvGamma(shape,scale)
   vec output(n);
   for(int i=0;i<n;i++){
-    output(i) = 1/R::rgamma(as_scalar(shape(i)),1/as_scalar(scale(i)));
+    output(i) = 1.0/R::rgamma(as_scalar(shape(i)),1.0/as_scalar(scale(i)));
   }
   
   // bound small values to prevent numerical overflow issues
-  output(find(output<1.0e-6)).fill(1.0e-6);
-  output(find(output>1.0e9)).fill(1.0e9);
+  output(find(output<cutmin)).fill(cutmin);
+  output(find(output>cutmax)).fill(cutmax);
   
   return output;
 }
@@ -147,8 +148,7 @@ vec randinvgaussian(int const& n, vec const& mu, double const& lambda){
   vec y = pow(nu,2.0);
   vec musq = pow(mu,2.0);
   vec output = mu + musq%y/2.0/lambda - mu/2.0/lambda%sqrt(4.0*lambda*mu%y + musq%pow(y,2.0));
-  output(find(output<1.0e-6)).fill(1.0e-6);
-  output(find(output>1.0e9)).fill(1.0e9);
+  output(find(output<cutmin)).fill(cutmin);
   uvec wch = find(randu(n) > mu/(mu+output));
   output(wch) = musq(wch)/output(wch);
   return output;
@@ -160,7 +160,7 @@ vec randinvgaussian(int const& n, vec const& mu, double const& lambda){
 
 // draw elasticity vector beta (used for scalability experiments)
 //[[Rcpp::export]]
-vec drawbeta(mat const& Y, mat const& X, bool fast){
+vec draw_beta(mat const& Y, mat const& X, bool fast){
 
   int n = Y.n_rows;
   int p = Y.n_cols;
@@ -211,11 +211,11 @@ vec drawbeta(mat const& Y, mat const& X, bool fast){
 }
 
 // draw upper-level mean elasticity parameters theta
-vec draw_theta(int const& ell, vec const& npar, List const& parindextree,
+vec draw_theta(int const& ell, vec const& npar, List const& index,
                vec const& theta, vec const& Psi, vec const& tausq){
 
   vec Psi_above, Psi_below, prec_above, prec_below, prec, theta_above, theta_below, thetatilde, theta_ell;
-  
+
   vec endindex = cumsum(npar)-1;
   vec begindex = endindex-npar+1;
 
@@ -223,28 +223,28 @@ vec draw_theta(int const& ell, vec const& npar, List const& parindextree,
   // below = data
 
   // precision
-  prec_above = 1/Psi(span(begindex(ell),endindex(ell)))/tausq(ell);
-  prec_above = prec_above % replace_cpp(parindextree[ell], 1/Psi(span(begindex(ell+1),endindex(ell+1))));
-  prec_below = 1/Psi(span(begindex(ell-1),endindex(ell-1)))/tausq(ell-1);
-  prec_below = groupsum_cpp(prec_below,parindextree[ell-1],npar(ell));
+  prec_above = 1.0/Psi(span(begindex(ell+1),endindex(ell+1)));
+  prec_above = replace_cpp(index[ell], prec_above)/Psi(span(begindex(ell),endindex(ell)))/tausq(ell);
+  prec_below = 1.0/Psi(span(begindex(ell-1),endindex(ell-1)))/tausq(ell-1);
+  prec_below = groupsum_cpp(prec_below,index[ell-1],npar(ell));
   prec = prec_above + prec_below;
 
   // mean
   theta_above = theta(span(begindex(ell+1),endindex(ell+1)));
-  theta_above = replace_cpp(parindextree[ell],theta_above)/Psi(span(begindex(ell),endindex(ell)))/tausq(ell);
+  theta_above = replace_cpp(index[ell], theta_above)/Psi(span(begindex(ell),endindex(ell)))/tausq(ell);
   theta_below = theta(span(begindex(ell-1),endindex(ell-1)))/Psi(span(begindex(ell-1),endindex(ell-1)))/tausq(ell-1);
-  theta_below = groupsum_cpp(theta_below,parindextree[ell-1],npar(ell));
-  thetatilde = 1/prec % (theta_above + theta_below);
+  theta_below = groupsum_cpp(theta_below,index[ell-1],npar(ell));
+  thetatilde = 1.0/prec % (theta_above + theta_below);
 
   // draw theta
-  theta_ell = thetatilde + sqrt(1/prec) % randn(npar(ell));
+  theta_ell = thetatilde + sqrt(1.0/prec) % randn(npar(ell));
 
   return theta_ell;
 
 }
 
 // draw local variances lambdasq/psisq
-vec draw_lambdasq(int const& ell, vec const& npar, List const& parindextree, List const& childrencounts,
+vec draw_lambdasq(int const& ell, vec const& npar, List const& index, List const& childrencounts,
                   vec const& theta, vec const& Psi, vec const& lambdasq, vec const& xilambda, vec const& tausq,
                   std::string product_shrinkage, std::string group_shrinkage){
 
@@ -257,29 +257,30 @@ vec draw_lambdasq(int const& ell, vec const& npar, List const& parindextree, Lis
   // product-lasso
   if(ell==0 && product_shrinkage=="lasso"){
 
-    vec Psistar = replace_cpp(parindextree[ell],Psi(span(begindex(ell+1),endindex(ell+1))));
+    vec Psistar = replace_cpp(index[ell],Psi(span(begindex(ell+1),endindex(ell+1))));
 
     // prior mean
-    mean = replace_cpp(parindextree[ell],theta(span(begindex(ell+1),endindex(ell+1))));
+    mean = replace_cpp(index[ell],theta(span(begindex(ell+1),endindex(ell+1))));
 
     // beta - prior mean
     xi = theta(span(begindex(ell),endindex(ell))) - mean;
 
     // draw
     mutilde = sqrt(2.0)*sqrt(Psistar)*sqrt(tausq(ell))/abs(xi);
-    out = 1/randinvgaussian(npar(ell),mutilde,2);
+    out = 1.0/randinvgaussian(npar(ell),mutilde,2);
 
   }
+
   // product-horseshoe
   else if(ell==0 && product_shrinkage=="horseshoe"){
 
-    vec Psistar = replace_cpp(parindextree[ell],Psi(span(begindex(ell+1),endindex(ell+1))));
+    vec Psistar = replace_cpp(index[ell],Psi(span(begindex(ell+1),endindex(ell+1))));
 
     // shape
     shape = 0.5 + 0.5*ones(npar(ell));
 
     // scale: sums at level ell
-    mean = replace_cpp(parindextree[ell],theta(span(begindex(ell+1),endindex(ell+1))));
+    mean = replace_cpp(index[ell],theta(span(begindex(ell+1),endindex(ell+1))));
     xi = theta(span(begindex(ell),endindex(ell))) - mean;
     levelsums = pow(xi,2.0)/Psistar/tausq(ell);
     scale = 1.0/xilambda(span(begindex(ell),endindex(ell))) + 0.5*levelsums;
@@ -288,29 +289,30 @@ vec draw_lambdasq(int const& ell, vec const& npar, List const& parindextree, Lis
     out = randig(npar(ell),shape,scale);
 
   }
+
   // group-horseshoe
   else if(ell>0 && ell<L-1 && group_shrinkage=="horseshoe"){
-    
+
     vec Psistar = ones(npar(ell));
     // vec Psistar = replace_cpp(parindextree[ell],Psi(span(begindex(ell+1),endindex(ell+1))));
-    
+
     // shape: count children nodes at each level
     counts = as<vec>(childrencounts[ell-1]);
     shape = 0.5 + 0.5*(1 + counts);
 
     // scale (i): sums at level ell
-    mean = replace_cpp(parindextree[ell],theta(span(begindex(ell+1),endindex(ell+1))));
+    mean = replace_cpp(index[ell], theta(span(begindex(ell+1),endindex(ell+1))));
     xi = theta(span(begindex(ell),endindex(ell))) - mean;
     levelsums = pow(xi,2.0)/Psistar/tausq(ell);
 
     // scale (ii): sums at all levels below ell
     for(int s=(ell-1);s>=0;s--){
 
-      Psistar = replace_cpp(parindextree[s],Psistar) % lambdasq(span(begindex(s),endindex(s)));
-      mean = replace_cpp(parindextree[s], theta(span(begindex(s+1),endindex(s+1))));
+      Psistar = replace_cpp(index[s],Psistar) % lambdasq(span(begindex(s),endindex(s)));
+      mean = replace_cpp(index[s], theta(span(begindex(s+1),endindex(s+1))));
       xi = theta(span(begindex(s),endindex(s))) - mean;
-      levelsums += groupsum_cpp(pow(xi,2.0)/Psistar/tausq(s),parindextree[s],npar(ell));
-     
+      levelsums += groupsum_cpp(pow(xi,2.0)/Psistar/tausq(s),index[s],npar(ell));
+
       // if(ell-s==1) levelsums += groupsum_cpp(pow(xi,2.0)/Psistar/tausq(s),parindextree[s],npar(ell));
       // else levelsums += groupsum_cpp(pow(xi,2.0)/Psistar/tausq(s), replace_cpp(parindextree[s],parindextree[s+1]),npar(ell));
 
@@ -425,9 +427,9 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
   vec phi = zeros(sum(nphi));
   uvec wchown = find(eye<mat>(p,p)==1);
   uvec wchcross = find(eye<mat>(p,p)==0);
-  vec beta = vectorise(inv(trans(X)*X+eye(p,p))*trans(X)*Y);
+  vec beta = vectorise(inv(trans(X)*X + 0.1*eye(p,p))*trans(X)*Y);
   vec betabar = zeros(p*p);
-  vec lamstar = ones(p*p);
+  vec Lambdastar = ones(p*p);
   vec tausq = ones(1);
   vec xitau = tausq;
   vec tausqown = ones(1);
@@ -460,14 +462,14 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
     // phi, beta, sigmasq
     // -------------------------------------------------------------- //
     
-    lamstar(wchcross) = lambdasq*as_scalar(tausq);
-    lamstar(wchown) = lambdasqown*as_scalar(tausqown);
-    
+    Lambdastar(wchcross) = lambdasq*as_scalar(tausq);
+    Lambdastar(wchown) = lambdasqown*as_scalar(tausqown);
+
     for(int i=0;i<p;i++){
       
       // precompute
       Xt = X/sqrt(sigmasq(i));
-      LamXtp = diagmat(lamstar(span(p*i,p*i+p-1))) *  trans(Xt);
+      LamXtp = diagmat(Lambdastar(span(p*i,p*i+p-1)))*trans(Xt);
       XtLamXtp = Xt * LamXtp;
       
       // phi (marginalizing over beta)
@@ -478,18 +480,18 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
       // = I - (XtLamXt' - XtLamXt'(I + XtLamXt')^-1XtLamXt'
       mat C = Clist[i];
       Ct = C/sqrt(sigmasq(i));
-      irootXt = solve(trimatu(chol(symmatu(XtLamXtp + eye(n,n)))),eye(n,n));
-      projmat = eye(n,n) - (XtLamXtp - XtLamXtp*irootXt*trans(irootXt)*XtLamXtp);
+      irootXt = solve(trimatu(chol(symmatu(XtLamXtp + eye(n,n)))), eye(n,n));
+      projmat = symmatu(eye(n,n) - (XtLamXtp - XtLamXtp*irootXt*trans(irootXt)*XtLamXtp));
       irootC = solve(trimatu(chol(symmatu(trans(Ct)*projmat*Ct + Aphi(i,i)))), eye(nphi(i),nphi(i)));
       phitilde = (irootC*trans(irootC))*(trans(Ct)*projmat*Y.col(i)/sqrt(sigmasq(i)) + Aphi(i,i)*phibar(i));
       phi(span(cumnphi(i)-nphi(i),cumnphi(i)-1)) = phitilde + irootC*randn(nphi(i));
-      
+
       // Ystar
       Ystar = Y.col(i) - C*phi(span(cumnphi(i)-nphi(i),cumnphi(i)-1));
       ytstar = vectorise(Ystar)/sqrt(sigmasq(i));
       
       // beta (conditional)
-      u = betabar(span(p*i,p*i+p-1)) + sqrt(lamstar(span(p*i,p*i+p-1))) % randn<vec>(p);
+      u = betabar(span(p*i,p*i+p-1)) + sqrt(Lambdastar(span(p*i,p*i+p-1))) % randn<vec>(p);
       v = Xt * u + randn<vec>(n);
       w = (irootXt*trans(irootXt)) * (ytstar - v);
       beta(span(p*i,p*i+p-1)) = u + LamXtp * w;
@@ -497,7 +499,7 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
       // sigmasq
       vec E = Y.col(i) - X*beta(span(p*i,p*i+p-1)) - C*phi(span(cumnphi(i)-nphi(i),cumnphi(i)-1));
       scale = a + 0.5*trans(E)*E;
-      sigmasq(i) = 1/R::rgamma(b + 0.5*n,1/as_scalar(scale));
+      sigmasq(i) = 1.0/R::rgamma(b + 0.5*n,1.0/as_scalar(scale));
       
     }
     
@@ -505,15 +507,15 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
     
     // cross
     levelsums = sum(pow(beta(wchcross),2.0)/lambdasq);
-    tausq = 1/R::rgamma(0.5*(p*p-p+1), 1/as_scalar(1/xitau+0.5*levelsums));
-    if(tausq(0)<1.0e-6) tausq(0) = 1.0e-6;
-    xitau = 1/R::rgamma(1,as_scalar(1/(1+1/tausq)));
+    tausq = 1.0/R::rgamma(0.5*(p*p-p+1), 1.0/as_scalar(1.0/xitau+0.5*levelsums));
+    if(tausq(0)<cutmin) tausq(0) = cutmin;
+    xitau = 1.0/R::rgamma(1,as_scalar(1.0/(1.0+1.0/tausq)));
     
     // own
     levelsums = sum(pow(beta(wchown),2.0));
-    tausqown = 1/R::rgamma(0.5*(p+1), 1/as_scalar(1/xitauown+0.5*levelsums));
-    if(tausqown(0)<1.0e-6) tausqown(0) = 1.0e-6;
-    xitauown = 1/R::rgamma(1,as_scalar(1/(1+1/tausqown)));
+    tausqown = 1.0/R::rgamma(0.5*(p+1), 1.0/as_scalar(1.0/xitauown+0.5*levelsums));
+    if(tausqown(0)<cutmin) tausqown(0) = cutmin;
+    xitauown = 1.0/R::rgamma(1,as_scalar(1.0/(1+1.0/tausqown)));
     
     // lambdasq  ---------------------------------------------------- //
     
@@ -522,25 +524,25 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
       
       // cross
       mutilde = pow(2*tausq(0)/pow(beta(wchcross),2.0),0.5);
-      lambdasq = 1/randinvgaussian(npar,mutilde,2);
+      lambdasq = 1.0/randinvgaussian(npar,mutilde,2);
       
       // own
       mutilde = pow(2*tausqown(0)/pow(beta(wchown),2.0),0.5);
-      lambdasqown = 1/randinvgaussian(p,mutilde,2);
+      lambdasqown = 1.0/randinvgaussian(p,mutilde,2);
       
     }
     // horseshoe: C+(0,1)
     if(Shrinkage=="horseshoe"){
       
       // cross
-      scale = 1/xilambda + 0.5*pow(beta(wchcross),2.0)/as_scalar(tausq);
+      scale = 1.0/xilambda + 0.5*pow(beta(wchcross),2.0)/as_scalar(tausq);
       lambdasq = randig(npar,ones(npar),scale);
-      xilambda = randig(npar,ones(npar),1+1/lambdasq);
+      xilambda = randig(npar,ones(npar),1+1.0/lambdasq);
       
       // own
-      scale = 1/xilambdaown + 0.5*pow(beta(wchown),2.0)/as_scalar(tausqown);
+      scale = 1.0/xilambdaown + 0.5*pow(beta(wchown),2.0)/as_scalar(tausqown);
       lambdasqown = randig(p,ones(p),scale);
-      xilambdaown = randig(p,ones(p),1+1/lambdasqown);
+      xilambdaown = randig(p,ones(p),1+1.0/lambdasqown);
       
     }
     
@@ -578,7 +580,8 @@ List rSURshrinkage(List Data, List Prior, List Mcmc, std::string Shrinkage, bool
     Named("tausqdraws") = tausqdraws,
     Named("tausqowndraws") = tausqowndraws,
     Named("sigmasqdraws") = sigmasqdraws,
-    Named("phidraws") = phidraws
+    Named("phidraws") = phidraws,
+    Named("runtimemin") = timer.toc()/60.0
   );
   
 }
@@ -601,7 +604,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
 
   List childrencounts = countchildren(tree,false);
   List childrencounts_own = countchildren(tree,true);
-  
+
   // prior
   double thetabar_cross = Prior["thetabar_cross"];
   double thetabar_own = Prior["thetabar_own"];
@@ -614,7 +617,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
   int Rep = Mcmc["R"];
   int keep = Mcmc["keep"];
   vec accept = zeros(sum(npar));
-  
+
   // shrinkage
   std::string product_shrinkage = Shrinkage["product"];
   std::string group_shrinkage = Shrinkage["group"];
@@ -631,21 +634,21 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
   vec begindex_own = endindex_own-npar_own+1;
   uvec wchown = find(eye<mat>(p,p)==1);
   uvec wchcross = find(eye<mat>(p,p)==0);
-  
+
   // initial values: variances - cross elasticities
   vec lambdasq = ones(sum(npar));
   vec xilambda = ones(sum(npar));
   vec Psi = ones(sum(npar));
   vec tausq = ones(L);
   vec xitau = ones(L);
-  
+
   // initial values: variances - own elasticities
   vec lambdasq_own = ones(sum(npar_own));
   vec xilambda_own = ones(sum(npar_own));
   vec Psi_own = ones(sum(npar_own));
   vec tausq_own = ones(L);
   vec xitau_own = ones(L);
-  
+
   // initial values: elasticities
   vec beta = vectorise(inv(trans(X)*X+0.1*eye(p,p))*trans(X)*Y);
   vec theta = zeros(sum(npar));
@@ -658,7 +661,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
   }
   theta(sum(npar)-1) = thetabar_cross;
   theta_own(sum(npar_own)-1) = thetabar_own;
-  
+
   // initial values: everything else
   vec xi = zeros(p*p);
   vec betabar = zeros(p*p);
@@ -675,7 +678,7 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
   vec cumnphi = cumsum(nphi);
   mat CspCs = trans(Cstar)*Cstar;
   vec phi = zeros(sum(nphi));
-  
+
   // storage matrices
   mat betadraws(Rep/keep, p*p);
   mat lambdasqdraws(Rep/keep,p*p);
@@ -689,68 +692,66 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
   mat tausqowndraws(Rep/keep, L);
   mat sigmasqdraws(Rep/keep, p);
   mat phidraws(Rep/keep,sum(nphi));
-  
+
   // print progress banner
   wall_clock timer;
   timer.tic();
   if(print) Rprintf("MCMC Progress \n");
-  
-  double numcutoff = 1.0e-6;
-    
+
   // MCMC loop
   for (rep=0; rep<Rep; rep++){
 
     // -------------------------------------------------------------- //
     // top -> bottom
     // -------------------------------------------------------------- //
-    
+
     // HIGHER-LEVEL PARAMETERS -------------------------------------- //
-    
+
     for(int ell=L-1; ell>0;ell--){
-      
+
       // CROSS ELASTICITIES ----------------------------------------- //
 
       // theta
       theta(span(begindex(ell),endindex(ell))) = draw_theta(ell, npar, parindextree, theta, Psi, tausq);
 
       // tausq
-      res = theta(span(begindex(ell),endindex(ell))) - replace_cpp(parindextree[ell],theta(span(begindex(ell+1),endindex(ell+1))));
+      res = theta(span(begindex(ell),endindex(ell))) - replace_cpp(parindextree[ell], theta(span(begindex(ell+1),endindex(ell+1))));
       levelsums = sum(pow(res,2.0)/Psi(span(begindex(ell),endindex(ell))));
       tausq(ell) = 1.0/R::rgamma(0.5 + 0.5*npar(ell), 1.0/(1.0/xitau(ell)+0.5*as_scalar(levelsums)));
-      if(tausq(ell)<numcutoff) tausq(ell) = numcutoff;
+      if(tausq(ell)<cutmin) tausq(ell) = cutmin;
       xitau(ell) = 1.0/R::rgamma(1,1.0/(1+1.0/tausq(ell)));
 
       // lambdasq
       lambdasq(span(begindex(ell),endindex(ell))) = draw_lambdasq(ell,npar,parindextree,childrencounts,theta,Psi,lambdasq,xilambda,tausq,product_shrinkage,group_shrinkage);
       xilambda(span(begindex(ell),endindex(ell))) = randig(npar(ell),ones(npar(ell)),1 + 1.0/lambdasq(span(begindex(ell),endindex(ell))));
-      Psi(span(begindex(ell),endindex(ell))) = lambdasq(span(begindex(ell),endindex(ell))) % replace_cpp(parindextree[ell],Psi(span(begindex(ell+1),endindex(ell+1))));
-      
+      Psi(span(begindex(ell),endindex(ell))) = lambdasq(span(begindex(ell),endindex(ell))) % replace_cpp(parindextree[ell], Psi(span(begindex(ell+1),endindex(ell+1))));
+
       // OWN ELASTICITIES ------------------------------------------- //
-      
+
       // theta
       theta_own(span(begindex_own(ell),endindex_own(ell))) = draw_theta(ell, npar_own, parindextree_own, theta_own, Psi_own, tausq_own);
 
       // tausq
-      res = theta_own(span(begindex_own(ell),endindex_own(ell))) - replace_cpp(parindextree_own[ell],theta_own(span(begindex_own(ell+1),endindex_own(ell+1))));
+      res = theta_own(span(begindex_own(ell),endindex_own(ell))) - replace_cpp(parindextree_own[ell], theta_own(span(begindex_own(ell+1),endindex_own(ell+1))));
       levelsums = sum(pow(res,2.0)/Psi_own(span(begindex_own(ell),endindex_own(ell))));
       tausq_own(ell) = 1.0/R::rgamma(0.5 + 0.5*npar_own(ell), 1.0/(1.0/xitau_own(ell)+0.5*as_scalar(levelsums)));
-      if(tausq_own(ell)<numcutoff) tausq_own(ell) = numcutoff;
+      if(tausq_own(ell)<cutmin) tausq_own(ell) = cutmin;
       xitau_own(ell) = 1.0/R::rgamma(1,1.0/(1+1.0/tausq_own(ell)));
-      
+
       // lambdasq
       lambdasq_own(span(begindex_own(ell),endindex_own(ell))) = draw_lambdasq(ell,npar_own,parindextree_own,childrencounts_own,theta_own,Psi_own,lambdasq_own,xilambda_own,tausq_own,product_shrinkage,group_shrinkage);
       xilambda_own(span(begindex_own(ell),endindex_own(ell))) = randig(npar_own(ell),ones(npar_own(ell)),1 + 1.0/lambdasq_own(span(begindex_own(ell),endindex_own(ell))));
-      Psi_own(span(begindex_own(ell),endindex_own(ell))) = lambdasq_own(span(begindex_own(ell),endindex_own(ell))) % replace_cpp(parindextree_own[ell],Psi_own(span(begindex_own(ell+1),endindex_own(ell+1))));
-      
-    } 
-    
+      Psi_own(span(begindex_own(ell),endindex_own(ell))) = lambdasq_own(span(begindex_own(ell),endindex_own(ell))) % replace_cpp(parindextree_own[ell], Psi_own(span(begindex_own(ell+1),endindex_own(ell+1))));
+
+    }
+
     // PRODUCT-LEVEL PARAMETERS ------------------------------------- //
-    
+
     Lambdastar(wchcross) = Psi(span(begindex(0),endindex(0))) * tausq(0);
     Lambdastar(wchown) = Psi_own(span(begindex_own(0),endindex_own(0))) * tausq_own(0);
-    betabar(wchcross) = replace_cpp(parindextree[0],theta(span(begindex(1),endindex(1))));
-    betabar(wchown) = replace_cpp(parindextree_own[0],theta_own(span(begindex_own(1),endindex_own(1))));
-    
+    betabar(wchcross) = replace_cpp(parindextree[0], theta(span(begindex(1),endindex(1))));
+    betabar(wchown) = replace_cpp(parindextree_own[0], theta_own(span(begindex_own(1),endindex_own(1))));
+
     for(int i=0;i<p;i++){
 
       // precompute
@@ -790,40 +791,40 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
       sigmasq(i) = 1.0/R::rgamma(b+0.5*n, 1.0/as_scalar(rate));
 
     }
-    
+
     // fill in first set of thetas with last draw of beta
     theta(span(begindex(0),endindex(0))) = beta(wchcross);
     theta_own(span(0,npar_own(0)-1)) = beta(wchown);
-    
+
     // tausq - CROSS
     levelsums = sum(pow(xi(wchcross),2.0)/Psi(span(begindex(0),endindex(0))));
     tausq(0) = 1.0/R::rgamma(0.5 + 0.5*npar(0), 1.0/(1.0/xitau(0)+0.5*as_scalar(levelsums)));
-    if(tausq(0)<numcutoff) tausq(0) = numcutoff;
+    if(tausq(0)<cutmin) tausq(0) = cutmin;
     xitau(0) = 1.0/R::rgamma(1,1.0/(1+1.0/tausq(0)));
 
     // lambdasq - CROSS
     lambdasq(span(begindex(0),endindex(0))) = draw_lambdasq(0,npar,parindextree,childrencounts,theta,Psi,lambdasq,xilambda,tausq,product_shrinkage,group_shrinkage);
     xilambda(span(begindex(0),endindex(0))) = randig(npar(0),ones(npar(0)),1 + 1.0/lambdasq(span(begindex(0),endindex(0))));
-    Psi(span(begindex(0),endindex(0))) = lambdasq(span(begindex(0),endindex(0))) % replace_cpp(parindextree[0],Psi(span(begindex(1),endindex(1))));
+    Psi(span(begindex(0),endindex(0))) = lambdasq(span(begindex(0),endindex(0))) % replace_cpp(parindextree[0], Psi(span(begindex(1),endindex(1))));
 
     // tausq - OWN
     levelsums = sum(pow(xi(wchown),2.0)/Psi_own(span(begindex_own(0),endindex_own(0))));
     tausq_own(0) = 1.0/R::rgamma(0.5 + 0.5*npar_own(0), 1.0/(1.0/xitau_own(0)+0.5*as_scalar(levelsums)));
-    if(tausq_own(0)<numcutoff) tausq_own(0) = numcutoff;
+    if(tausq_own(0)<cutmin) tausq_own(0) = cutmin;
     xitau_own(0) = 1.0/R::rgamma(1,1.0/(1+1.0/tausq_own(0)));
 
     // lambdasq - OWN
     lambdasq_own(span(begindex_own(0),endindex_own(0))) = draw_lambdasq(0,npar_own,parindextree_own,childrencounts_own,theta_own,Psi_own,lambdasq_own,xilambda_own,tausq_own,product_shrinkage,group_shrinkage);
     xilambda_own(span(begindex_own(0),endindex_own(0))) = randig(npar_own(0),ones(npar_own(0)),1 + 1.0/lambdasq_own(span(begindex_own(0),endindex_own(0))));
     Psi_own(span(begindex_own(0),endindex_own(0))) = lambdasq_own(span(begindex_own(0),endindex_own(0))) % replace_cpp(parindextree_own[0],Psi_own(span(begindex_own(1),endindex_own(1))));
-    
+
     // -------------------------------------------------------------- //
     // print time and store draws
     // -------------------------------------------------------------- //
 
     // time
     if(print) print_time(rep, Rep, timer.toc());
-      
+
     // store draws
     if((rep+1)%keep==0){
       mkeep = (rep+1)/keep - 1;
@@ -862,7 +863,8 @@ List rSURhiershrinkage(List const& Data, List const& Prior, List const& Mcmc, Li
     Named("tausqdraws") = tausqdraws,
     Named("tausqowndraws") = tausqowndraws,
     Named("sigmasqdraws") = sigmasqdraws,
-    Named("phidraws") = phidraws
+    Named("phidraws") = phidraws,
+    Named("runtimemin") = timer.toc()/60.0
   );
 
 }
