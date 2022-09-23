@@ -13,7 +13,7 @@ sourceCpp(here("src","shrinkage-mcmc.cpp"))
 # generate data
 # ---------------------------------------------------------------------------- #
 
-# dimensions
+# dimensions (n: number of obs, p: number of products: d: number of controls)
 n = 50
 p = 100
 d = 1
@@ -132,50 +132,3 @@ matplot(out$phidraws,type="l",col=1:length(data$phivec))
 abline(h=data$phivec,col=1:length(data$phivec))
 plot(data$phivec,apply(out$phidraws[burn:end,],2,mean),xlab="true",ylab="estimated")
 abline(0,1)
-
-# plot shrinkage
-kappa = apply(1/(1+out$tausqdraws[burn:end,1]*out$Psidraws[burn:end,1:p^2]),2,mean)
-hist(kappa)
-
-# ---------------------------------------------------------------------------- #
-# plot means and confidence intervals (hierarchical vs. standard)
-# ---------------------------------------------------------------------------- #
-
-model_hierarchical = list(out.ridge.ridge = out.ridge.ridge)
-model_standard = list(out.sparse.ridge = out.sparse.ridge)
-
-# compute means and credible intervals
-par_top = summarize_elasticities_higher(model_hierarchical,burn:end,p,(cumnpar[1]+1):(cumnpar[2])) 
-par_mid = summarize_elasticities_higher(model_hierarchical,burn:end,p,1:cumnpar[1]) 
-par_bot = summarize_elasticities(model_hierarchical,burn:end,p) 
-par_std = summarize_elasticities(model_standard,burn:end,p) 
-par_true = c(data$thetalist[[3]],data$thetalist[[2]],data$B)
-level_names = c("Hierarchical Shrinkage\ntheta (top level)",
-                "Hierarchical Shrinkage\ntheta (middle level)",
-                "Hierarchical Shrinkage\nbeta")
-
-# tables
-df.ridge.ridge = par_top %>%
-  bind_rows(par_mid) %>%
-  bind_rows(par_bot) %>%
-  mutate(true = rep(par_true,each=length(models)),
-         level = rep(level_names, length(models)*c(npar[3],npar[2],p^2))) %>%
-  formatout(.,"plot","wrap")
-df.sparse.ridge = par_std %>%
-  mutate(true = as.vector(data$B),
-         level = "Standard Shrinkage\nbeta") %>%
-  formatout(.,"plot","wrap")
-df = df.ridge.ridge %>%
-  bind_rows(df.sparse.ridge) %>%
-  mutate(level = factor(level,levels=unique(level)))
-
-# plot
-ggplot(df,aes(x=true,y=mean)) + 
-  geom_segment(aes(x=true,xend=true,y=lower,yend=upper),color=4,lwd=1,alpha=0.25) +
-  geom_point(size=0.25) +
-  geom_abline(aes(intercept=0,slope=1)) +
-  labs(x="true value", y="posterior mean") +
-  facet_wrap(.~level, scales="free",nrow=1, labeller = ) +
-  theme_shrink() + 
-  theme(strip.text.x = element_text(size=11))
-
